@@ -29,7 +29,7 @@ st.markdown("""
         padding: 10px 40px !important;
         font-family: 'Oswald', sans-serif !important;
         background-image: none !important;
-        width: 100%; /* Spans its column for centering */
+        width: 100%; 
     }
     div.stButton > button p, div.stButton > button div, div.stButton > button span {
         background-color: transparent !important;
@@ -69,7 +69,7 @@ def reset_all():
         if key.startswith("filt_"):
             st.session_state[key] = "All"
 
-# 5. FILTERS GRID (Cleaned up label)
+# 5. FILTERS GRID
 with st.expander("GLOBAL FILTERS", expanded=True):
     r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
     f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key="filt_freq")
@@ -91,7 +91,6 @@ with st.expander("GLOBAL FILTERS", expanded=True):
     rds_col = 'RDS_Decode_' if 'RDS_Decode_' in df.columns else 'RDS_Decode'
     f_rds = r3c3.selectbox("RDS Decode?", ["All"] + sorted(df[rds_col].dropna().unique().tolist()), key="filt_rds")
 
-    # Perfectly Centered Reset Button
     bt_left, bt_mid, bt_right = st.columns([2, 1, 2])
     bt_mid.button("RESET ALL FILTERS", on_click=reset_all)
 
@@ -125,8 +124,9 @@ m7.metric("Furthest Reception", f"{max_d:,.0f} mi")
 # 8. SUBMITTED LOGS TABLE
 st.subheader("Submitted Logs")
 
-# Fake Pagination: Row Count Selector
-row_count = st.slider("Number of rows to display", 10, 500, 100)
+# Increased row count limit for heavy DXers
+row_count = st.slider("Displaying up to X rows:", 10, 2500, 100)
+st.write(f"Showing **{min(len(filt_df), row_count)}** of **{len(filt_df)}** filtered results.")
 
 table_cols = [
     'Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 
