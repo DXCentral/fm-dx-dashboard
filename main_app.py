@@ -20,7 +20,7 @@ st.markdown("""
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 1.1rem; text-transform: uppercase; }
 
-    /* ULTIMATE RESET BUTTON FIX: Strips all nested background colors */
+    /* RESET BUTTON: Pure Red, White Text, Perfectly Centered */
     div.stButton > button {
         background-color: #D32F2F !important;
         color: white !important;
@@ -28,9 +28,8 @@ st.markdown("""
         border: none !important;
         padding: 10px 40px !important;
         font-family: 'Oswald', sans-serif !important;
-        display: block;
-        margin: 0 auto;
-        background-image: none !important; /* Removes any gradient/highlights */
+        background-image: none !important;
+        width: 100%; /* Spans its column for centering */
     }
     div.stButton > button p, div.stButton > button div, div.stButton > button span {
         background-color: transparent !important;
@@ -61,7 +60,7 @@ def load_data():
 df = load_data()
 if df.empty: st.stop()
 
-# 3. LOGO (Adjusted for "Half-ish" size)
+# 3. LOGO
 st.image("SEDAP Banner.png", width=800)
 
 # 4. RESET LOGIC
@@ -70,7 +69,7 @@ def reset_all():
         if key.startswith("filt_"):
             st.session_state[key] = "All"
 
-# 5. FILTERS GRID
+# 5. FILTERS GRID (Cleaned up label)
 with st.expander("GLOBAL FILTERS", expanded=True):
     r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
     f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key="filt_freq")
@@ -92,7 +91,9 @@ with st.expander("GLOBAL FILTERS", expanded=True):
     rds_col = 'RDS_Decode_' if 'RDS_Decode_' in df.columns else 'RDS_Decode'
     f_rds = r3c3.selectbox("RDS Decode?", ["All"] + sorted(df[rds_col].dropna().unique().tolist()), key="filt_rds")
 
-    st.button("RESET ALL FILTERS", on_click=reset_all)
+    # Perfectly Centered Reset Button
+    bt_left, bt_mid, bt_right = st.columns([2, 1, 2])
+    bt_mid.button("RESET ALL FILTERS", on_click=reset_all)
 
 # 6. FILTERING LOGIC
 filt_df = df.copy()
@@ -121,8 +122,11 @@ dist_col = 'Distance__mi_' if 'Distance__mi_' in df.columns else 'Distance'
 max_d = filt_df[dist_col].max() if not filt_df.empty else 0
 m7.metric("Furthest Reception", f"{max_d:,.0f} mi")
 
-# 8. SUBMITTED LOGS TABLE (With Auto-Fit and Pagination)
+# 8. SUBMITTED LOGS TABLE
 st.subheader("Submitted Logs")
+
+# Fake Pagination: Row Count Selector
+row_count = st.slider("Number of rows to display", 10, 500, 100)
 
 table_cols = [
     'Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 
@@ -130,10 +134,8 @@ table_cols = [
 ]
 display_cols = [c for c in table_cols if c in filt_df.columns]
 
-# Pagination Logic: Only show first 100 rows, but allow vertical scroll within that window
-# We use st.dataframe's column_config to mimic "auto-fit"
 st.dataframe(
-    filt_df[display_cols].head(500), # Showing top 500 for better context, scrollable
+    filt_df[display_cols].head(row_count), 
     use_container_width=True, 
     hide_index=True,
     column_config={
