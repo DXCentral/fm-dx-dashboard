@@ -20,7 +20,7 @@ st.markdown("""
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 1.1rem; text-transform: uppercase; }
 
-    /* Reset Button: Pure Red, White Text, No Black Highlights */
+    /* ULTIMATE RESET BUTTON FIX: Strips all nested background colors */
     div.stButton > button {
         background-color: #D32F2F !important;
         color: white !important;
@@ -28,17 +28,18 @@ st.markdown("""
         border: none !important;
         padding: 10px 40px !important;
         font-family: 'Oswald', sans-serif !important;
-        box-shadow: none !important;
         display: block;
         margin: 0 auto;
+        background-image: none !important; /* Removes any gradient/highlights */
+    }
+    div.stButton > button p, div.stButton > button div, div.stButton > button span {
+        background-color: transparent !important;
+        background: transparent !important;
     }
     div.stButton > button:hover {
         background-color: #b22828 !important;
         color: white !important;
     }
-    
-    /* Custom spacing for the logo */
-    .logo-container { display: flex; justify-content: flex-start; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -60,21 +61,17 @@ def load_data():
 df = load_data()
 if df.empty: st.stop()
 
-# 3. LOGO (Reduced Size)
-st.image("SEDAP Banner.png", width=500)
+# 3. LOGO (Adjusted for "Half-ish" size)
+st.image("SEDAP Banner.png", width=800)
 
 # 4. RESET LOGIC
-if 'filters_reset' not in st.session_state:
-    st.session_state.filters_reset = False
-
 def reset_all():
     for key in st.session_state.keys():
         if key.startswith("filt_"):
             st.session_state[key] = "All"
 
-# 5. FILTERS GRID (5-5-3 Layout)
+# 5. FILTERS GRID
 with st.expander("GLOBAL FILTERS", expanded=True):
-    # Row 1
     r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
     f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key="filt_freq")
     f_dxer = r1c2.selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().tolist()), key="filt_dxer")
@@ -82,7 +79,6 @@ with st.expander("GLOBAL FILTERS", expanded=True):
     f_state = r1c4.selectbox("State", ["All"] + sorted(df['State'].dropna().unique().tolist()), key="filt_state")
     f_country = r1c5.selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().tolist()), key="filt_country")
 
-    # Row 2
     r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
     f_dxer_co = r2c1.selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().tolist()), key="filt_dx_co")
     f_dxer_st = r2c2.selectbox("DXer State", ["All"] + sorted(df['DXer_State_Prov'].dropna().unique().tolist()), key="filt_dx_st")
@@ -90,7 +86,6 @@ with st.expander("GLOBAL FILTERS", expanded=True):
     f_year = r2c4.selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key="filt_year")
     f_day = r2c5.selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key="filt_day")
 
-    # Row 3
     r3c1, r3c2, r3c3 = st.columns(3)
     f_dist = r3c1.selectbox("Distance Distribution", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().tolist()), key="filt_dist")
     f_reg = r3c2.selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().tolist()), key="filt_reg")
@@ -117,8 +112,6 @@ st.header("General Stats")
 m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
 m1.metric("Total Stations Logged", f"{len(filt_df):,}")
 m2.metric("Unique Stations Heard", f"{filt_df['Station'].nunique():,}")
-
-# Logic matches your exact country names list
 m3.metric("US States (Incl DC)", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
 m4.metric("Canadian Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
 m5.metric("Mexican States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
@@ -128,14 +121,27 @@ dist_col = 'Distance__mi_' if 'Distance__mi_' in df.columns else 'Distance'
 max_d = filt_df[dist_col].max() if not filt_df.empty else 0
 m7.metric("Furthest Reception", f"{max_d:,.0f} mi")
 
-# 8. SUBMITTED LOGS TABLE
+# 8. SUBMITTED LOGS TABLE (With Auto-Fit and Pagination)
 st.subheader("Submitted Logs")
+
 table_cols = [
     'Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 
     'Country', 'Local_Month', 'DXer', 'DXer_Concatenated_Location', dist_col
 ]
 display_cols = [c for c in table_cols if c in filt_df.columns]
-st.dataframe(filt_df[display_cols], use_container_width=True, hide_index=True)
+
+# Pagination Logic: Only show first 100 rows, but allow vertical scroll within that window
+# We use st.dataframe's column_config to mimic "auto-fit"
+st.dataframe(
+    filt_df[display_cols].head(500), # Showing top 500 for better context, scrollable
+    use_container_width=True, 
+    hide_index=True,
+    column_config={
+        "DXer_Concatenated_Location": st.column_config.TextColumn(width="large"),
+        "Station": st.column_config.TextColumn(width="medium"),
+        "Frequency": st.column_config.NumberColumn(format="%.1f"),
+    }
+)
 
 csv = filt_df.to_csv(index=False).encode('utf-8')
 st.download_button("EXPORT TABLE TO CSV", data=csv, file_name="submitted_logs.csv", mime="text/csv")
