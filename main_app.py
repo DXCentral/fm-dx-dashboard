@@ -20,6 +20,7 @@ st.markdown("""
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 1.1rem; text-transform: uppercase; }
 
+    /* NUCLEAR CSS FOR RESET BUTTON: No highlights, no backgrounds except Red */
     div.stButton > button {
         background-color: #D32F2F !important;
         color: white !important;
@@ -27,10 +28,23 @@ st.markdown("""
         border: none !important;
         padding: 10px 40px !important;
         font-family: 'Oswald', sans-serif !important;
-        background-image: none !important;
-        width: 100%; 
+        width: 100%;
+        box-shadow: none !important;
     }
-    div.stButton > button:hover { background-color: #b22828 !important; }
+    /* This targets the specific text container inside the button to kill the black background */
+    div.stButton > button div, 
+    div.stButton > button p, 
+    div.stButton > button span, 
+    div.stButton > button:active, 
+    div.stButton > button:focus {
+        background-color: transparent !important;
+        background: transparent !important;
+        color: white !important;
+    }
+    div.stButton > button:hover {
+        background-color: #b22828 !important;
+        color: white !important;
+    }
     
     .log-info {
         font-size: 1.2rem;
@@ -54,10 +68,8 @@ def load_data():
         query = "SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`"
         df = client.query(query).to_dataframe()
         
-        # Determine the latest date in the dataset
         latest_date = "Unknown"
         if 'Local_Date' in df.columns:
-            # Convert to datetime to find the max, then back to string for display
             latest_date = pd.to_datetime(df['Local_Date']).max().strftime('%Y-%m-%d')
             
         return df, latest_date
@@ -78,8 +90,8 @@ def reset_all():
         if key.startswith("filt_"):
             st.session_state[key] = "All"
 
-# 5. FILTERS GRID
-with st.expander("GLOBAL FILTERS", expanded=True):
+# 5. FILTERS GRID (Explicit label to avoid _arr)
+with st.expander(label="GLOBAL FILTERS", expanded=True):
     r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
     f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key="filt_freq")
     f_dxer = r1c2.selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().tolist()), key="filt_dxer")
