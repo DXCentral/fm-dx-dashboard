@@ -11,6 +11,7 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;700&display=swap');
     
+    /* Global Styles */
     html, body, [class*="st-"] {
         font-family: 'Oswald', sans-serif;
         background-color: #000000;
@@ -18,108 +19,112 @@ st.markdown("""
     }
     
     /* Soft Red Headers */
-    h1, h2, h3, h4 { color: #D32F2F !important; font-weight: 700; }
+    h1, h2, h3, h4 { color: #D32F2F !important; font-weight: 700; text-transform: uppercase; }
     
-    /* Descriptions in White */
-    .stMarkdown p { color: #FFFFFF; }
+    /* Metric / Counter Boxes */
+    [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2rem; }
+    [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 1.1rem; text-transform: uppercase; }
 
-    /* Rounded Red Buttons with White Text */
+    /* Custom Red Rounded Buttons */
     div.stButton > button {
         background-color: #D32F2F;
         color: white;
-        border-radius: 20px;
-        border: none;
-        padding: 10px 24px;
+        border-radius: 25px;
+        border: 2px solid #D32F2F;
+        padding: 10px 25px;
         font-family: 'Oswald', sans-serif;
+        transition: 0.3s;
+    }
+    div.stButton > button:hover {
+        background-color: #FFFFFF;
+        color: #D32F2F;
     }
     
-    /* Dropdown styling */
-    .stSelectbox label { color: #D32F2F !important; }
+    /* Link Colors */
+    a { color: #D32F2F !important; text-decoration: none; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. DATA LOADING (BigQuery)
+# 2. DATA LOADING
 @st.cache_data
 def load_data():
-    # This pulls from the Streamlit Secrets we discussed earlier
-    credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_service_account"])
-    client = bigquery.Client(credentials=credentials, project=credentials.project_id)
-    
-    query = "SELECT * FROM `sporadic-es-data-analysis.FMList_Data.vw_receptions_full`"
-    df = client.query(query).to_dataframe()
-    
-    # Split Mid_Point string into Lat/Lon for the Heatmap
-    # Format: "31.7562325,-88.37510585"
-    df[['Mid_Lat', 'Mid_Lon']] = df['Mid_Point'].str.split(',', expand=True).astype(float)
-    
-    return df
+    try:
+        credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_service_account"])
+        client = bigquery.Client(credentials=credentials, project=credentials.project_id)
+        query = "SELECT * FROM `sporadic-es-data-analysis.FMList_Data.vw_receptions_full`"
+        df = client.query(query).to_dataframe()
+        
+        # Split Mid_Point string into Lat/Lon for Maps
+        if 'Mid_Point' in df.columns:
+            df[['Mid_Lat', 'Mid_Lon']] = df['Mid_Point'].str.split(',', expand=True).astype(float)
+        return df
+    except Exception as e:
+        st.error(f"Error connecting to BigQuery: {e}")
+        return pd.DataFrame()
 
-try:
-    df = load_data()
-except Exception as e:
-    st.error("Waiting for BigQuery Credentials... Please add them to Streamlit Secrets.")
+df = load_data()
+
+if df.empty:
+    st.warning("Please configure your BigQuery Secrets in Streamlit Cloud to begin.")
     st.stop()
 
-# 3. GLOBAL FILTERS (Top Bar)
-st.image("logo.png", width=300) # Ensure you upload logo.png to your repo
-st.title("SPORADIC Es DATA ANALYSIS PROJECT")
+# 3. TOP SECTION: LOGO & FILTERS
+st.image("SEDAP Banner.png", use_container_width=True)
 
-# Create a container for the 13 filters
-with st.container():
-    # Creating 4 rows of 4 columns to fit all 13 + Reset
-    r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
-    r2_c1, r2_c2, r2_c3, r2_c4 = st.columns(4)
-    r3_c1, r3_c2, r3_c3, r3_c4 = st.columns(4)
-    r4_c1, r4_c2 = st.columns([1, 3])
-
-    # Helper function for dropdowns
-    def filter_box(col, label, key):
-        options = ["All"] + sorted(df[key].unique().tolist())
-        return col.selectbox(label, options, key=f"filter_{key}")
-
-    # Row 1
-    f_freq = filter_box(r1_c1, "Frequency", "Frequency")
-    f_dxer = filter_box(r1_c2, "DXer Name", "DXer")
-    f_stat = filter_box(r1_c3, "Station", "Station")
-    f_stat_st = filter_box(r1_c4, "Station State", "State")
-
-    # Row 2
-    f_stat_co = filter_box(r2_c1, "Station Country", "Country")
-    f_dxer_co = filter_box(r2_c2, "DXer Country", "DXer_Country")
-    f_dxer_st = filter_box(r2_c3, "DXer State/Prov", "DXer_State_Prov")
-    f_month = filter_box(r2_c4, "Local Month", "Local_Month")
-
-    # Row 3
-    f_year = filter_box(r3_c1, "Local Year", "Local_Year")
-    f_day = filter_box(r3_c2, "Month Day", "Month_Day")
-    f_dist = filter_box(r3_c3, "Distance Distribution", "Distance_Distribution")
-    f_reg = filter_box(r3_c4, "DXer Region", "DXer_Region")
-
-    # Row 4
-    f_rds = r4_c1.selectbox("RDS Decode?", ["All"] + sorted(df['RDS_Decode_'].unique().tolist()))
+# Filter Logic Setup
+with st.expander("GLOBAL FILTERS", expanded=True):
+    # 13 Filters in a grid
+    c1, c2, c3, c4 = st.columns(4)
+    c5, c6, c7, c8 = st.columns(4)
+    c9, c10, c11, c12 = st.columns(4)
+    c13, c14 = st.columns([1, 3])
     
-    if r4_c2.button("RESET ALL FILTERS"):
+    f_freq = c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].unique().tolist()))
+    f_dxer = c2.selectbox("DXer Name", ["All"] + sorted(df['DXer'].unique().tolist()))
+    f_station = c3.selectbox("Station", ["All"] + sorted(df['Station'].unique().tolist()))
+    f_state = c4.selectbox("State", ["All"] + sorted(df['State'].unique().tolist()))
+    
+    f_country = c5.selectbox("Country", ["All"] + sorted(df['Country'].unique().tolist()))
+    f_dx_country = c6.selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].unique().tolist()))
+    f_dx_state = c7.selectbox("DXer State", ["All"] + sorted(df['DXer_State_Prov'].unique().tolist()))
+    f_month = c8.selectbox("Local Month", ["All"] + sorted(df['Local_Month'].unique().tolist()))
+    
+    f_year = c9.selectbox("Local Year", ["All"] + sorted(df['Local_Year'].unique().tolist()))
+    f_day = c10.selectbox("Month Day", ["All"] + sorted(df['Month_Day'].unique().tolist()))
+    f_dist = c11.selectbox("Distance Distribution", ["All"] + sorted(df['Distance_Distribution'].unique().tolist()))
+    f_region = c12.selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].unique().tolist()))
+    
+    f_rds = c13.selectbox("RDS Decode?", ["All"] + sorted(df['RDS_Decode_'].unique().tolist()))
+    
+    if c14.button("RESET ALL FILTERS"):
         st.rerun()
 
-# 4. FILTER LOGIC
-filtered_df = df.copy()
-# (Logic to apply each filter to filtered_df goes here - I've kept it simple for this first draft)
-# Example:
-if f_year != "All":
-    filtered_df = filtered_df[filtered_df['Local_Year'] == f_year]
+# Apply Filters
+filt_df = df.copy()
+if f_freq != "All": filt_df = filt_df[filt_df['Frequency'] == f_freq]
+if f_dxer != "All": filt_df = filt_df[filt_df['DXer'] == f_dxer]
+if f_state != "All": filt_df = filt_df[filt_df['State'] == f_state]
+if f_year != "All": filt_df = filt_df[filt_df['Local_Year'] == f_year]
+# ... (We will add the rest of the filtering logic in the next step)
 
-# 5. LANDING PAGE CONTENT (General Stats)
-st.header("GENERAL STATS")
+# 4. NAVIGATION & CONTENT
+# For now, we show the General Stats page. 
+# We will split this into multiple pages in the next file.
 
-# Counters Row
-c1, c2, c3, c4, c5, c6 = st.columns(6)
-c1.metric("Total Stations", len(filtered_df))
-c2.metric("States/DC", filtered_df['State'].nunique())
-c3.metric("Countries", filtered_df['Country'].nunique())
-c4.metric("Can. Provinces", filtered_df[filtered_df['Country'] == 'CAN']['DXer_State_Prov'].nunique()) # Adjust logic as needed
-c5.metric("Mex. States", filtered_df[filtered_df['Country'] == 'MEX']['DXer_State_Prov'].nunique()) # Adjust logic as needed
-c6.metric("Furthest", f"{filtered_df['Distance__mi_'].max()} mi")
+st.header("General Stats")
 
-# Raw Data Table
-st.subheader("RECEPTION LOGS")
-st.dataframe(filtered_df[['Local_Date', 'Frequency', 'Station', 'City', 'State', 'Distance__mi_']], use_container_width=True)
+# Counters
+m1, m2, m3, m4, m5, m6 = st.columns(6)
+m1.metric("Total Stations", len(filt_df))
+m2.metric("States/DC", filt_df['State'].nunique())
+m3.metric("Countries", filt_df['Country'].nunique())
+m4.metric("CAN Prov", filt_df[filt_df['Country'] == 'CAN']['DXer_State_Prov'].nunique())
+m5.metric("MEX States", filt_df[filt_df['Country'] == 'MEX']['DXer_State_Prov'].nunique())
+m6.metric("Max Distance", f"{filt_df['Distance__mi_'].max()} mi")
+
+st.subheader("Raw Logging Data")
+st.dataframe(filt_df[['Local_Date', 'Frequency', 'Station', 'City', 'State', 'Distance__mi_']], use_container_width=True)
+
+# Export Button
+csv = filt_df.to_csv(index=False).encode('utf-8')
+st.download_button("EXPORT TABLE TO CSV", data=csv, file_name="dx_logs.csv", mime="text/csv")
