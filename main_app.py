@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
-from datetime import datetime
 
 # 1. THEME & STYLING
 st.set_page_config(layout="wide", page_title="Sporadic Es Data Analysis")
@@ -32,11 +31,18 @@ st.markdown("""
         width: 100%; 
     }
     div.stButton > button:hover { background-color: #b22828 !important; }
+    
+    .log-info {
+        font-size: 1.2rem;
+        color: #FFFFFF;
+        margin-bottom: 20px;
+        text-transform: uppercase;
+        font-weight: 300;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. DATA LOADING (Optimized for Static Yearly Data)
-# Set TTL to 2,592,000 seconds (30 days)
+# 2. DATA LOADING (30-Day Cache)
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -47,19 +53,24 @@ def load_data():
         client = bigquery.Client(credentials=credentials, project=credentials.project_id, location="US")
         query = "SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`"
         df = client.query(query).to_dataframe()
-        return df, datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        # Determine the latest date in the dataset
+        latest_date = "Unknown"
+        if 'Local_Date' in df.columns:
+            # Convert to datetime to find the max, then back to string for display
+            latest_date = pd.to_datetime(df['Local_Date']).max().strftime('%Y-%m-%d')
+            
+        return df, latest_date
     except Exception as e:
         st.error(f"Connection Error: {e}")
-        return pd.DataFrame(), None
+        return pd.DataFrame(), "Error"
 
-df, load_time = load_data()
+df, last_log_date = load_data()
 if df.empty: st.stop()
 
-# 3. SIDEBAR INFO
-with st.sidebar:
-    st.image("SEDAP Banner.png", use_container_width=True)
-    st.write(f"**Data Cache Loaded:** {load_time}")
-    st.info("Since this data is updated annually, the dashboard uses a 30-day cache for instant loading. If you add new logs, use 'Clear Cache' in the app menu.")
+# 3. HEADER SECTION
+st.image("SEDAP Banner.png", width=800)
+st.markdown(f'<div class="log-info">LOG DATA THROUGH: {last_log_date}</div>', unsafe_allow_html=True)
 
 # 4. RESET LOGIC
 def reset_all():
