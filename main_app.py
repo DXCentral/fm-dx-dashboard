@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
+from datetime import datetime
 
 # 1. THEME & STYLING
 st.set_page_config(layout="wide", page_title="Sporadic Es Data Analysis")
@@ -20,7 +21,6 @@ st.markdown("""
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 1.1rem; text-transform: uppercase; }
 
-    /* RESET BUTTON: Pure Red, White Text, Perfectly Centered */
     div.stButton > button {
         background-color: #D32F2F !important;
         color: white !important;
@@ -31,19 +31,13 @@ st.markdown("""
         background-image: none !important;
         width: 100%; 
     }
-    div.stButton > button p, div.stButton > button div, div.stButton > button span {
-        background-color: transparent !important;
-        background: transparent !important;
-    }
-    div.stButton > button:hover {
-        background-color: #b22828 !important;
-        color: white !important;
-    }
+    div.stButton > button:hover { background-color: #b22828 !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. DATA LOADING
-@st.cache_data(ttl=3600)
+# 2. DATA LOADING (Optimized for Static Yearly Data)
+# Set TTL to 2,592,000 seconds (30 days)
+@st.cache_data(ttl=2592000)
 def load_data():
     try:
         creds_dict = dict(st.secrets["gcp_service_account"])
@@ -52,16 +46,20 @@ def load_data():
         credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = bigquery.Client(credentials=credentials, project=credentials.project_id, location="US")
         query = "SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`"
-        return client.query(query).to_dataframe()
+        df = client.query(query).to_dataframe()
+        return df, datetime.now().strftime("%Y-%m-%d %H:%M")
     except Exception as e:
         st.error(f"Connection Error: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(), None
 
-df = load_data()
+df, load_time = load_data()
 if df.empty: st.stop()
 
-# 3. LOGO
-st.image("SEDAP Banner.png", width=800)
+# 3. SIDEBAR INFO
+with st.sidebar:
+    st.image("SEDAP Banner.png", use_container_width=True)
+    st.write(f"**Data Cache Loaded:** {load_time}")
+    st.info("Since this data is updated annually, the dashboard uses a 30-day cache for instant loading. If you add new logs, use 'Clear Cache' in the app menu.")
 
 # 4. RESET LOGIC
 def reset_all():
@@ -123,14 +121,8 @@ m7.metric("Furthest Reception", f"{max_d:,.0f} mi")
 
 # 8. SUBMITTED LOGS TABLE
 st.subheader("Submitted Logs")
-
-# --- DYNAMIC SLIDER LOGIC ---
 total_results = len(filt_df)
-# Set the slider max to the total results, or 10 if it's empty
 slider_max = max(total_results, 10) 
-
-# If there are more than 100 results, default the slider to 100. 
-# Otherwise, default to the total count.
 default_val = min(total_results, 100)
 
 row_count = st.slider("Select number of rows to display:", 1, slider_max, default_val)
