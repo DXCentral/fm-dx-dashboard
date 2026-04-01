@@ -124,9 +124,17 @@ m7.metric("Furthest Reception", f"{max_d:,.0f} mi")
 # 8. SUBMITTED LOGS TABLE
 st.subheader("Submitted Logs")
 
-# Increased row count limit for heavy DXers
-row_count = st.slider("Displaying up to X rows:", 10, 2500, 100)
-st.write(f"Showing **{min(len(filt_df), row_count)}** of **{len(filt_df)}** filtered results.")
+# --- DYNAMIC SLIDER LOGIC ---
+total_results = len(filt_df)
+# Set the slider max to the total results, or 10 if it's empty
+slider_max = max(total_results, 10) 
+
+# If there are more than 100 results, default the slider to 100. 
+# Otherwise, default to the total count.
+default_val = min(total_results, 100)
+
+row_count = st.slider("Select number of rows to display:", 1, slider_max, default_val)
+st.write(f"Showing **{row_count:,}** of **{total_results:,}** filtered results.")
 
 table_cols = [
     'Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 
