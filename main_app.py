@@ -3,7 +3,7 @@ import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-# 1. THEME & STYLING (Oswald + Custom Buttons)
+# 1. THEME & STYLING
 st.set_page_config(layout="wide", page_title="Sporadic Es Data Analysis")
 
 st.markdown("""
@@ -20,7 +20,7 @@ st.markdown("""
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 1.1rem; text-transform: uppercase; }
 
-    /* Fix for Reset Button: Red button, White text, No black highlights */
+    /* Reset Button: Pure Red, White Text, No Black Highlights */
     div.stButton > button {
         background-color: #D32F2F !important;
         color: white !important;
@@ -29,14 +29,16 @@ st.markdown("""
         padding: 10px 40px !important;
         font-family: 'Oswald', sans-serif !important;
         box-shadow: none !important;
+        display: block;
+        margin: 0 auto;
     }
     div.stButton > button:hover {
         background-color: #b22828 !important;
         color: white !important;
     }
     
-    /* Center the reset button container */
-    .reset-container { display: flex; justify-content: center; padding: 20px; }
+    /* Custom spacing for the logo */
+    .logo-container { display: flex; justify-content: flex-start; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -59,17 +61,20 @@ df = load_data()
 if df.empty: st.stop()
 
 # 3. LOGO (Reduced Size)
-st.image("SEDAP Banner.png", width=600) # Manually setting width to make it smaller
+st.image("SEDAP Banner.png", width=500)
 
-# 4. RESET LOGIC (Using Session State)
-def reset_filters():
+# 4. RESET LOGIC
+if 'filters_reset' not in st.session_state:
+    st.session_state.filters_reset = False
+
+def reset_all():
     for key in st.session_state.keys():
         if key.startswith("filt_"):
             st.session_state[key] = "All"
 
 # 5. FILTERS GRID (5-5-3 Layout)
 with st.expander("GLOBAL FILTERS", expanded=True):
-    # Row 1 (5 filters)
+    # Row 1
     r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
     f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key="filt_freq")
     f_dxer = r1c2.selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().tolist()), key="filt_dxer")
@@ -77,29 +82,25 @@ with st.expander("GLOBAL FILTERS", expanded=True):
     f_state = r1c4.selectbox("State", ["All"] + sorted(df['State'].dropna().unique().tolist()), key="filt_state")
     f_country = r1c5.selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().tolist()), key="filt_country")
 
-    # Row 2 (5 filters)
+    # Row 2
     r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
     f_dxer_co = r2c1.selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().tolist()), key="filt_dx_co")
     f_dxer_st = r2c2.selectbox("DXer State", ["All"] + sorted(df['DXer_State_Prov'].dropna().unique().tolist()), key="filt_dx_st")
-    f_month = r2c3.selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().tolist()), key="filt_month")
+    f_month = r2c3.selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key="filt_month")
     f_year = r2c4.selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key="filt_year")
     f_day = r2c5.selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key="filt_day")
 
-    # Row 3 (3 filters)
+    # Row 3
     r3c1, r3c2, r3c3 = st.columns(3)
     f_dist = r3c1.selectbox("Distance Distribution", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().tolist()), key="filt_dist")
     f_reg = r3c2.selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().tolist()), key="filt_reg")
     rds_col = 'RDS_Decode_' if 'RDS_Decode_' in df.columns else 'RDS_Decode'
     f_rds = r3c3.selectbox("RDS Decode?", ["All"] + sorted(df[rds_col].dropna().unique().tolist()), key="filt_rds")
 
-    # Centered Reset Button
-    st.markdown('<div class="reset-container">', unsafe_allow_html=True)
-    st.button("RESET ALL FILTERS", on_click=reset_filters)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.button("RESET ALL FILTERS", on_click=reset_all)
 
 # 6. FILTERING LOGIC
 filt_df = df.copy()
-# (Mapping filter inputs to columns)
 filter_map = {
     'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state,
     'Country': f_country, 'DXer_Country': f_dxer_co, 'DXer_State_Prov': f_dxer_st,
@@ -107,25 +108,20 @@ filter_map = {
     'Distance_Distribution': f_dist, 'DXer_Region': f_reg, rds_col: f_rds
 }
 for col, val in filter_map.items():
-    if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
+    if val != "All":
+        filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
 # 7. CONTENT: GENERAL STATS
 st.header("General Stats")
 
-m1, m2, m3, m4, m5, m6, m7 = st.columns(7) # 7 columns to fit "Unique Stations"
+m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
 m1.metric("Total Stations Logged", f"{len(filt_df):,}")
 m2.metric("Unique Stations Heard", f"{filt_df['Station'].nunique():,}")
 
-# Regional Logic
-us_states = filt_df[filt_df['Country'] == 'USA']['State'].nunique()
-m3.metric("US States (Incl DC)", us_states)
-
-can_prov = filt_df[filt_df['Country'] == 'CAN']['State'].nunique()
-m4.metric("Canadian Provinces", can_prov)
-
-mex_st = filt_df[filt_df['Country'] == 'MEX']['State'].nunique()
-m5.metric("Mexican States", mex_st)
-
+# Logic matches your exact country names list
+m3.metric("US States (Incl DC)", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
+m4.metric("Canadian Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
+m5.metric("Mexican States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
 m6.metric("Total Countries", filt_df['Country'].nunique())
 
 dist_col = 'Distance__mi_' if 'Distance__mi_' in df.columns else 'Distance'
@@ -134,12 +130,10 @@ m7.metric("Furthest Reception", f"{max_d:,.0f} mi")
 
 # 8. SUBMITTED LOGS TABLE
 st.subheader("Submitted Logs")
-# Adding requested columns and removing row index
 table_cols = [
     'Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 
     'Country', 'Local_Month', 'DXer', 'DXer_Concatenated_Location', dist_col
 ]
-# Only show columns that exist in data
 display_cols = [c for c in table_cols if c in filt_df.columns]
 st.dataframe(filt_df[display_cols], use_container_width=True, hide_index=True)
 
