@@ -49,8 +49,17 @@ st.markdown("""
 @st.cache_data
 def load_data():
     try:
-        credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_service_account"])
-        client = bigquery.Client(credentials=credentials, project=credentials.project_id)
+        # Create a copy of the secrets to modify
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        
+        # PEM Key Auto-Fix: Converts literal '\n' characters into real newlines
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        
+        credentials = service_account.Credentials.from_service_account_info(creds_dict)
+        
+        # LOCATION FIX: Explicitly set to "US" to match your BigQuery Dataset
+        client = bigquery.Client(credentials=credentials, project=credentials.project_id, location="US")
+        
         query = "SELECT * FROM `sporadic-es-data-analysis.FMList_Data.vw_receptions_full`"
         df = client.query(query).to_dataframe()
         
@@ -65,7 +74,7 @@ def load_data():
 df = load_data()
 
 if df.empty:
-    st.warning("Please configure your BigQuery Secrets in Streamlit Cloud to begin.")
+    st.warning("Please check your BigQuery connection settings.")
     st.stop()
 
 # 3. TOP SECTION: LOGO & FILTERS
@@ -73,7 +82,6 @@ st.image("SEDAP Banner.png", use_container_width=True)
 
 # Filter Logic Setup
 with st.expander("GLOBAL FILTERS", expanded=True):
-    # 13 Filters in a grid
     c1, c2, c3, c4 = st.columns(4)
     c5, c6, c7, c8 = st.columns(4)
     c9, c10, c11, c12 = st.columns(4)
@@ -105,12 +113,8 @@ if f_freq != "All": filt_df = filt_df[filt_df['Frequency'] == f_freq]
 if f_dxer != "All": filt_df = filt_df[filt_df['DXer'] == f_dxer]
 if f_state != "All": filt_df = filt_df[filt_df['State'] == f_state]
 if f_year != "All": filt_df = filt_df[filt_df['Local_Year'] == f_year]
-# ... (We will add the rest of the filtering logic in the next step)
 
-# 4. NAVIGATION & CONTENT
-# For now, we show the General Stats page. 
-# We will split this into multiple pages in the next file.
-
+# 4. CONTENT (General Stats Page)
 st.header("General Stats")
 
 # Counters
