@@ -12,8 +12,9 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;700&display=swap');
     
+    /* Global Font Tweak */
     html, body, [class*="st-"] {
-        font-family: 'Oswald', sans-serif;
+        font-family: 'Oswald', sans-serif !important;
         background-color: #000000;
         color: #FFFFFF;
         font-weight: 300;
@@ -21,11 +22,13 @@ st.markdown("""
     
     h1, h2, h3, h4 { 
         color: #D32F2F !important; 
+        font-family: 'Oswald', sans-serif !important;
         font-weight: 400; 
         text-transform: uppercase; 
         letter-spacing: 3px;
     }
 
+    /* Tightening the Sidebar */
     [data-testid="stSidebar"] {
         background-color: #0A0A0A;
         border-right: 1px solid #1A1A1A;
@@ -46,6 +49,7 @@ st.markdown("""
         font-size: 0.8rem !important;
         letter-spacing: 2px;
         text-transform: uppercase;
+        font-family: 'Oswald', sans-serif !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -76,11 +80,11 @@ def load_data():
 df, last_log_date = load_data()
 if df.empty: st.stop()
 
-# 3. SIDEBAR NAVIGATION (Logo Removed)
+# 3. SIDEBAR NAVIGATION
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     selected_page = option_menu(
-        menu_title="SYSTEM MODULES",
+        menu_title="DATA MODULES", # Renamed
         options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"],
         icons=["speedometer2", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
         menu_icon="terminal",
@@ -88,9 +92,22 @@ with st.sidebar:
         styles={
             "container": {"background-color": "#0A0A0A", "padding": "0px"},
             "icon": {"color": "#888", "font-size": "14px"},
-            "nav-link": {"color": "white", "font-family": "Oswald", "font-size": "12px", "text-align": "left", "letter-spacing": "1px", "text-transform": "uppercase"},
+            "nav-link": {
+                "color": "white", 
+                "font-family": "Oswald, sans-serif", # Explicitly forcing Oswald here
+                "font-size": "12px", 
+                "text-align": "left", 
+                "letter-spacing": "1px", 
+                "text-transform": "uppercase"
+            },
             "nav-link-selected": {"background-color": "#D32F2F"},
-            "menu-title": {"color": "#D32F2F", "font-family": "Oswald", "font-size": "10px", "letter-spacing": "3px"}
+            "menu-title": {
+                "color": "#D32F2F", 
+                "font-family": "Oswald, sans-serif", 
+                "font-size": "11px", 
+                "letter-spacing": "3px",
+                "font-weight": "400"
+            }
         }
     )
     st.markdown("---")
