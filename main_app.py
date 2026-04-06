@@ -12,7 +12,6 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;700&display=swap');
     
-    /* Global Font Tweak */
     html, body, [class*="st-"] {
         font-family: 'Oswald', sans-serif !important;
         background-color: #000000;
@@ -28,18 +27,17 @@ st.markdown("""
         letter-spacing: 3px;
     }
 
-    /* Tightening the Sidebar */
+    /* WIDENED SIDEBAR: Increased width to prevent text wrapping */
     [data-testid="stSidebar"] {
         background-color: #0A0A0A;
         border-right: 1px solid #1A1A1A;
-        min-width: 200px !important;
-        max-width: 250px !important;
+        min-width: 300px !important; /* Bumped from 200px to 300px */
+        max-width: 350px !important;
     }
 
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
 
-    /* Narrow Reset Button */
     div.stButton > button {
         background-color: #D32F2F !important;
         color: white !important;
@@ -65,40 +63,43 @@ def load_data():
         client = bigquery.Client(credentials=credentials, project=credentials.project_id, location="US")
         query = "SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`"
         df = client.query(query).to_dataframe()
-        
         df['Local_Date'] = pd.to_datetime(df['Local_Date']).dt.date
         latest_date = df['Local_Date'].max()
-        
-        if 'Mid_Point' in df.columns:
-            df[['Mid_Lat', 'Mid_Lon']] = df['Mid_Point'].str.split(',', expand=True).apply(pd.to_numeric, errors='coerce')
-            
         return df, latest_date
     except Exception as e:
         st.error(f"Link Error: {e}")
         return pd.DataFrame(), "Error"
 
 df, last_log_date = load_data()
-if df.empty: st.stop()
 
 # 3. SIDEBAR NAVIGATION
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     selected_page = option_menu(
-        menu_title="DATA MODULES", # Renamed
-        options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"],
+        menu_title="DATA MODULES",
+        options=[
+            "DASHBOARD OVERVIEW", 
+            "ES-CLOUD TRACKER", 
+            "GEOGRAPHIC RADIUS", 
+            "TEMPORAL TRENDS", 
+            "FREQUENCY & MUF", 
+            "STATION & RDS IQ", 
+            "RECEPTION DYNAMICS"
+        ],
         icons=["speedometer2", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
         menu_icon="terminal",
         default_index=0,
         styles={
             "container": {"background-color": "#0A0A0A", "padding": "0px"},
-            "icon": {"color": "#888", "font-size": "14px"},
+            "icon": {"color": "#888", "font-size": "16px"},
             "nav-link": {
                 "color": "white", 
-                "font-family": "Oswald, sans-serif", # Explicitly forcing Oswald here
-                "font-size": "12px", 
+                "font-family": "Oswald, sans-serif", 
+                "font-size": "13px", # Nudged up slightly for better visibility
                 "text-align": "left", 
-                "letter-spacing": "1px", 
-                "text-transform": "uppercase"
+                "letter-spacing": "1.5px", 
+                "text-transform": "uppercase",
+                "white-space": "nowrap" # Forces single-line behavior
             },
             "nav-link-selected": {"background-color": "#D32F2F"},
             "menu-title": {
@@ -178,4 +179,5 @@ if selected_page == "DASHBOARD OVERVIEW":
 elif selected_page == "GEOGRAPHIC RADIUS":
     st.header("Regional Density Analysis")
     tab_usa, tab_can, tab_mex = st.tabs(["🇺🇸 UNITED STATES", "🇨🇦 CANADA", "🇲🇽 MEXICO"])
-    # (Maps go here)
+    with tab_usa:
+        st.info("Module Active: Analyzing US Log Distribution...")
