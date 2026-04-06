@@ -8,18 +8,22 @@ from google.oauth2 import service_account
 
 # 1. THEME & UI STYLING
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
+
+# Force Dark Mode CSS
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;700&display=swap');
-    html, body, [class*="st-"] { font-family: 'Oswald', sans-serif !important; background-color: #000000; color: #FFFFFF; font-weight: 300; }
-    [data-testid="stSidebarCollapseButton"] button, .st-emotion-cache-p5msec, .st-emotion-cache-1vt4y6f { display: none !important; }
-    h1, h2, h3, h4 { color: #D32F2F !important; font-family: 'Oswald', sans-serif !important; text-transform: uppercase; letter-spacing: 3px; }
-    [data-testid="stSidebar"] { background-color: #0A0A0A; border-right: 1px solid #1A1A1A; min-width: 320px !important; }
-    div.stButton > button { background-color: #D32F2F !important; color: white !important; border-radius: 4px !important; border: none !important; padding: 8px 25px !important; text-transform: uppercase; }
+    html, body, [class*="st-"], div {
+        font-family: 'Oswald', sans-serif !important;
+        background-color: #000000 !important;
+        color: #FFFFFF !important;
+    }
+    [data-testid="stSidebar"] { background-color: #0A0A0A !important; border-right: 1px solid #1A1A1A; }
+    h1, h2, h3, h4 { color: #D32F2F !important; text-transform: uppercase; letter-spacing: 2px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. DATA LOADING
+# 2. DATA LOADING (With Duplication Guard)
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -32,10 +36,13 @@ def load_data():
         df_logs = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`").to_dataframe()
         df_coords = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`").to_dataframe()
         
+        # KEY FIX: Remove duplicates from coordinate table before joining to prevent 644k blow-up
+        df_coords = df_coords.drop_duplicates(subset=['DXer_Concatenated_Location', 'Station_Concatenated_Location'])
+        
         df = df_logs.merge(df_coords, left_on=['Concatenated_DXer_Location', 'Concatenated_Station_Location'], 
                            right_on=['DXer_Concatenated_Location', 'Station_Concatenated_Location'], how='left')
         
-        # Numeric cleanup
+        # Coordinate Numbers
         df['DX_Lat'] = pd.to_numeric(df['DXer_Latitude'], errors='coerce').astype('float32')
         df['DX_Lon'] = pd.to_numeric(df['DXer_Longitude'], errors='coerce').astype('float32')
         df['ST_Lat'] = pd.to_numeric(df['Station_Lat'], errors='coerce').astype('float32')
@@ -54,89 +61,70 @@ def load_data():
 
 df, last_log_date, d_col = load_data()
 
-# 3. SIDEBAR & FILTERS (All 13 Restored)
+# 3. SIDEBAR
 from streamlit_option_menu import option_menu
 with st.sidebar:
-    st.markdown("<br>", unsafe_allow_html=True)
-    selected_page = option_menu(menu_title="DATA MODULES", options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], default_index=1)
-
-# (Insert standard 13-filter grid here as in v44.0)
-filt_df = df.copy()
+    selected_page = option_menu(menu_title="DATA MODULES", options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER"], icons=["house-fill", "cloud-haze2"], default_index=1)
 
 # 4. ES-CLOUD TRACKER
 if selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
-    view_mode = st.radio("SELECT MAP LAYER", ["Midpoint Heatmap (Es-Cloud)", "Path Line Analysis (Signal Grid)"], horizontal=True)
     
-    hc1, hc2 = st.columns([1, 2])
-    avail_dates = sorted(filt_df['Date_Obj'].unique())
-    date_range = hc1.date_input("Event Date Range", value=(avail_dates[0], avail_dates[-1]))
+    # Date Range - Defaults to show ALL data first
+    avail_dates = sorted(df['Date_Obj'].unique())
+    date_range = st.date_input("Filter Dates", value=(avail_dates[0], avail_dates[-1]))
     
     if isinstance(date_range, tuple) and len(date_range) == 2:
-        map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
+        map_df = df[(df['Date_Obj'] >= date_range[0]) & (df['Date_Obj'] <= date_range[1])]
     else:
-        map_df = filt_df[filt_df['Date_Obj'] == date_range]
+        map_df = df[df['Date_Obj'] == date_range]
 
-    if not map_df.empty:
-        # TIMING CONTROL
-        times = sorted(map_df['Time_Str'].dropna().unique().tolist())
-        if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
-        if 'playing' not in st.session_state: st.session_state.playing = False
+    times = sorted(map_df['Time_Str'].dropna().unique().tolist())
+    
+    # 5. THE MAP & PLAYBACK ENGINE
+    map_container = st.empty()
+    control_container = st.container()
 
-        sel_time = hc2.select_slider("Timing Control", options=["SHOW ALL"] + times, 
-                                     value=times[st.session_state.p_idx] if st.session_state.playing else "SHOW ALL")
-        
-        c1, c2 = st.columns(2)
-        if c1.button("▶ PLAY"):
-            st.session_state.playing = True
-            for i in range(st.session_state.p_idx, len(times)):
-                try:
-                    st.session_state.p_idx = i
-                    time.sleep(0.12)
-                    st.rerun()
-                except:
-                    continue # Skip "Bad Data" minutes at 07:32 etc.
-            st.session_state.playing = False
+    with control_container:
+        hc1, hc2, hc3 = st.columns([2, 1, 1])
+        sel_time = hc1.select_slider("Timing Control", options=["SHOW ALL"] + times, value="SHOW ALL")
+        play_btn = hc2.button("▶ PLAY")
+        stop_btn = hc3.button("⏹ STOP")
 
-        if c2.button("⏹ STOP"):
-            st.session_state.playing = False
-            st.session_state.p_idx = 0
-            st.rerun()
-
-        current_time = times[st.session_state.p_idx] if st.session_state.playing else sel_time
-        
-        # 60min Persistence Window
-        if current_time != "SHOW ALL":
-            sel_dt = datetime.datetime.strptime(current_time, '%H:%M')
-            win_start = (sel_dt - datetime.timedelta(minutes=60)).strftime('%H:%M')
-            render_df = map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= win_start)]
-        else:
+    # Heatmap Logic
+    def draw_map(time_val):
+        if time_val == "SHOW ALL":
             render_df = map_df
-
-        # 5. MAP RENDERING
-        layers = []
-        if view_mode == "Midpoint Heatmap (Es-Cloud)":
-            map_ready = render_df[['Mid_Lat', 'Mid_Lon']].dropna()
-            # CUSTOM RED-FOCUS COLOR RANGE (No Yellow)
-            red_gradient = [
-                [183, 28, 28, 60],   # Dark Red
-                [211, 47, 47, 150],  # Medium Red
-                [244, 67, 54, 200],  # Bright Red
-                [255, 205, 210, 230], # Soft Pink/White Core
-                [255, 255, 255, 255] # Pure White Peak
-            ]
-            layers.append(pdk.Layer(
-                'HeatmapLayer', data=map_ready, get_position='[Mid_Lon, Mid_Lat]',
-                radius_pixels=65, intensity=2.0, threshold=0.03,
-                color_range=red_gradient
-            ))
         else:
-            map_ready = render_df[['DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon']].dropna()
-            layers.append(pdk.Layer('LineLayer', data=map_ready, get_source_position='[DX_Lon, DX_Lat]', get_target_position='[ST_Lon, ST_Lat]', get_width=1, get_color=[211, 47, 47, 45]))
+            # 60 min window
+            t_obj = datetime.datetime.strptime(time_val, '%H:%M')
+            t_min = (t_obj - datetime.timedelta(minutes=60)).strftime('%H:%M')
+            render_df = map_df[(map_df['Time_Str'] <= time_val) & (map_df['Time_Str'] >= t_min)]
+        
+        map_ready = render_df[['Mid_Lat', 'Mid_Lon']].dropna()
+        
+        layer = pdk.Layer(
+            'HeatmapLayer', data=map_ready, get_position='[Mid_Lon, Mid_Lat]',
+            radius_pixels=60, intensity=2, threshold=0.03,
+            color_range=[[183, 28, 28, 50], [211, 47, 47, 150], [255, 255, 255, 255]]
+        )
+        
+        # MAPBOX STYLE (Force Dark with Borders)
+        view = pdk.ViewState(latitude=38, longitude=-95, zoom=3.5, pitch=0)
+        return pdk.Deck(layers=[layer], initial_view_state=view, map_style='mapbox://styles/mapbox/dark-v10')
 
-        st.pydeck_chart(pdk.Deck(
-            # Switched to Voyager for labels/borders
-            map_style='https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
-            initial_view_state=pdk.ViewState(latitude=38, longitude=-95, zoom=3.8),
-            layers=layers
-        ))
+    if play_btn:
+        for t in times:
+            with map_container:
+                st.pydeck_chart(draw_map(t))
+                st.write(f"### 🕒 CURRENT TIME: {t}")
+            time.sleep(0.1)
+    else:
+        with map_container:
+            st.pydeck_chart(draw_map(sel_time))
+
+# 6. DASHBOARD
+elif selected_page == "DASHBOARD OVERVIEW":
+    st.header("Operational Overview")
+    st.metric("Total Clean Logs", f"{len(df):,}")
+    st.dataframe(df.head(100), width='stretch')
