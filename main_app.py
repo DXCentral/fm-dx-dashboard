@@ -20,23 +20,16 @@ st.markdown("""
         font-weight: 300;
     }
 
-    /* Aggressive CSS to kill internal Streamlit text/icon leaks */
-    [data-testid="stSidebarCollapseButton"] button, 
-    [data-testid="stSidebarCollapseButton"] span,
-    [data-testid="stExpanderIcon"],
-    .st-emotion-cache-p5msec,
-    .st-emotion-cache-1vt4y6f,
-    span[data-testid="stHeaderActionElements"] { 
+    /* Suppress internal Streamlit UI artifacts */
+    [data-testid="stSidebarCollapseButton"], [data-testid="stExpanderIcon"],
+    .st-emotion-cache-p5msec, .st-emotion-cache-1vt4y6f { 
         display: none !important; 
-        visibility: hidden !important;
     }
 
-    h1, h2, h3, h4 { color: #D32F2F !important; font-family: 'Oswald', sans-serif !important; font-weight: 400; text-transform: uppercase; letter-spacing: 3px; }
+    h1, h2, h3, h4 { color: #D32F2F !important; font-family: 'Oswald', sans-serif !important; text-transform: uppercase; letter-spacing: 3px; }
     [data-testid="stSidebar"] { background-color: #0A0A0A; border-right: 1px solid #1A1A1A; min-width: 320px !important; }
-    [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
-    [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
-
-    /* Centered Data Table */
+    
+    /* Center-justify Dataframe cells */
     [data-testid="stDataFrame"] div[role="gridcell"] > div { text-align: center !important; justify-content: center !important; }
 
     div.stButton > button {
@@ -47,12 +40,11 @@ st.markdown("""
         padding: 8px 25px !important;
         font-family: 'Oswald', sans-serif !important;
         text-transform: uppercase;
-        letter-spacing: 2px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. ROBUST DATA LOADING
+# 2. DATA LOADING (Explicit Column Mapping)
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -66,47 +58,32 @@ def load_data():
         df_logs = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`").to_dataframe()
         df_coords = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`").to_dataframe()
         
-        # Column Discovery (Search for keywords to prevent crash)
-        def find_col(df, keywords):
-            for c in df.columns:
-                if all(k.lower() in c.lower() for k in keywords): return c
-            return None
+        # JOIN: Using exact names from your provided CSVs
+        # Note: BQ often converts spaces to underscores, so we handle both.
+        df = df_logs.merge(
+            df_coords, 
+            left_on=['Concatenated_DXer_Location', 'Concatenated_Station_Location'], 
+            right_on=['DXer_Concatenated_Location', 'Station_Concatenated_Location'], 
+            how='left'
+        )
 
-        log_dx = find_col(df_logs, ['DXer', 'Concatenated'])
-        log_st = find_col(df_logs, ['Station', 'Concatenated'])
-        coord_dx = find_col(df_coords, ['DXer', 'Concatenated'])
-        coord_st = find_col(df_coords, ['Station', 'Concatenated'])
+        # Coordinate Standardization
+        df['DX_Lat'] = pd.to_numeric(df['DXer_Latitude'], errors='coerce')
+        df['DX_Lon'] = pd.to_numeric(df['DXer_Longitude'], errors='coerce')
+        df['ST_Lat'] = pd.to_numeric(df['Station_Lat'], errors='coerce')
+        df['ST_Lon'] = pd.to_numeric(df['Station_Long'], errors='coerce')
 
-        # Join Tables
-        df = df_logs.merge(df_coords, left_on=[log_dx, log_st], right_on=[coord_dx, coord_st], how='left')
-
-        # Map Specific Coordinates (Rename to internal standard)
-        lats = [c for c in df.columns if 'lat' in c.lower()]
-        lons = [c for c in df.columns if 'lon' in c.lower() or 'long' in c.lower()]
-        
-        df = df.rename(columns={
-            [c for c in lats if 'dxer' in c.lower()][0]: 'DX_Lat',
-            [c for c in lons if 'dxer' in c.lower()][0]: 'DX_Lon',
-            [c for c in lats if 'station' in c.lower()][0]: 'ST_Lat',
-            [c for c in lons if 'station' in c.lower()][0]: 'ST_Lon'
-        })
-        
-        # Clean Coordinates
-        for col in ['DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon']:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-
+        # Midpoint for Heatmap
         df['Mid_Lat'] = (df['DX_Lat'] + df['ST_Lat']) / 2
         df['Mid_Lon'] = (df['DX_Lon'] + df['ST_Lon']) / 2
         
-        # Date & Time Formatting
-        date_col = [c for c in df.columns if 'date' in c.lower()][0]
-        time_col = [c for c in df.columns if 'time' in c.lower() and 'local' in c.lower()][0]
-        df['Formatted_Date'] = pd.to_datetime(df[date_col]).dt.date
-        df['Formatted_Time'] = pd.to_datetime(df[time_col], errors='coerce').dt.time
+        # Date/Time
+        df['Formatted_Date'] = pd.to_datetime(df['Local_Date']).dt.date
+        df['Formatted_Time'] = pd.to_datetime(df['Local_Time'], errors='coerce').dt.time
             
         return df, df['Formatted_Date'].max()
     except Exception as e:
-        st.error(f"System Link Failure: {e}")
+        st.error(f"Critical System Error: {e}")
         return pd.DataFrame(), "Error"
 
 df, last_log_date = load_data()
@@ -120,125 +97,95 @@ with st.sidebar:
         options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"],
         icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
         default_index=0,
-        styles={"nav-link-selected": {"background-color": "#D32F2F"}, "nav-link": {"font-size": "13px", "white-space": "nowrap"}}
+        styles={"nav-link-selected": {"background-color": "#D32F2F"}, "nav-link": {"font-size": "13px"}}
     )
-    st.markdown("---")
     st.caption(f"LOGS THROUGH: {last_log_date}")
 
-# 4. SHARED FILTERS (The 13-Grid)
+# 4. GLOBAL FILTERS
 st.image("SEDAP Banner.png", width=600)
-def reset_all():
-    for key in st.session_state.keys():
-        if key.startswith("filt_"): st.session_state[key] = "All"
 
 with st.expander(label="GLOBAL FILTERS", expanded=True):
-    r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
-    f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key="filt_freq")
-    f_dxer = r1c2.selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().tolist()), key="filt_dxer")
-    f_station = r1c3.selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().tolist()), key="filt_station")
-    f_state = r1c4.selectbox("State", ["All"] + sorted(df['State'].dropna().unique().tolist()), key="filt_state")
-    f_country = r1c5.selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().tolist()), key="filt_country")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    f_freq = c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key="filt_freq")
+    f_dxer = c2.selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().tolist()), key="filt_dxer")
+    f_station = c3.selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().tolist()), key="filt_station")
+    f_year = c4.selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key="filt_year")
+    f_country = c5.selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().tolist()), key="filt_country")
 
-    r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
-    f_dxer_co = r2c1.selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().tolist()), key="filt_dx_co")
-    f_dxer_st = r2c2.selectbox("DXer State", ["All"] + sorted(df['DXer_State_Prov'].dropna().unique().tolist()), key="filt_dx_st")
-    f_month = r2c3.selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key="filt_month")
-    f_year = r2c4.selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key="filt_year")
-    f_day = r2c5.selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key="filt_day")
-
-    r3c1, r3c2, r3c3 = st.columns(3)
-    f_dist = r3c1.selectbox("Distance Distribution", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().tolist()), key="filt_dist")
-    f_reg = r3c2.selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().tolist()), key="filt_reg")
-    rds_col = 'RDS_Decode_' if 'RDS_Decode_' in df.columns else 'RDS_Decode'
-    f_rds = r3c3.selectbox("RDS Decode?", ["All"] + sorted(df[rds_col].dropna().unique().tolist()), key="filt_rds")
-
-    bt_left, bt_mid, bt_right = st.columns([2, 1, 2])
-    bt_mid.button("RESET ALL FILTERS", on_click=reset_all)
-
-# Apply Global Filters
 filt_df = df.copy()
-filter_map = {'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state, 'Country': f_country, 'DXer_Country': f_dxer_co, 'DXer_State_Prov': f_dxer_st, 'Local_Month': f_month, 'Local_Year': f_year, 'Month_Day': f_day, 'Distance_Distribution': f_dist, 'DXer_Region': f_reg, rds_col: f_rds}
-for col, val in filter_map.items():
-    if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
+if f_freq != "All": filt_df = filt_df[filt_df['Frequency'].astype(str) == f_freq]
+if f_dxer != "All": filt_df = filt_df[filt_df['DXer'] == f_dxer]
+if f_station != "All": filt_df = filt_df[filt_df['Station'] == f_station]
+if f_year != "All": filt_df = filt_df[filt_df['Local_Year'].astype(str) == f_year]
+if f_country != "All": filt_df = filt_df[filt_df['Country'] == f_country]
 
 st.markdown("---")
 
-# 5. DATA MODULES
+# 5. PAGES
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
-    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
+    m1, m2, m3, m4 = st.columns(4)
     m1.metric("Total Logs", f"{len(filt_df):,}")
     m2.metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
-    m3.metric("US States", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
-    m4.metric("Canadian Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
-    m5.metric("Mexican States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
-    m6.metric("Total Countries", filt_df['Country'].nunique())
-    dist_col = 'Distance__mi_' if 'Distance__mi_' in df.columns else 'Distance'
-    m7.metric("Furthest Reception", f"{filt_df[dist_col].max() if not filt_df.empty else 0:,.0f} mi")
+    m3.metric("Total Countries", filt_df['Country'].nunique())
+    dist_col = 'Distance (mi)' if 'Distance (mi)' in filt_df.columns else 'Distance'
+    m4.metric("Furthest Reception", f"{filt_df[dist_col].max():,.0f} mi")
     st.dataframe(filt_df.head(100), use_container_width=True, hide_index=True)
 
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
-    
     view_mode = st.radio("SELECT MAP LAYER", ["Midpoint Heatmap (Es-Cloud)", "Path Line Analysis (Signal Grid)"], horizontal=True)
     
-    # 5a. DYNAMIC CONTROLS
+    # 5a. DYNAMIC CONTROLS (Default to All)
     hc1, hc2 = st.columns([1, 2])
-    
-    # Date Selection - DEFAULT TO ALL
     avail_dates = sorted(filt_df['Formatted_Date'].unique())
-    date_selection = hc1.date_input("Event Date Range", value=(avail_dates[0], avail_dates[-1]), min_value=avail_dates[0], max_value=avail_dates[-1])
     
-    # Filter by Date
-    if isinstance(date_selection, tuple) and len(date_selection) == 2:
-        map_df = filt_df[(filt_df['Formatted_Date'] >= date_selection[0]) & (filt_df['Formatted_Date'] <= date_selection[1])]
+    date_sel = hc1.date_input("Event Date Range", value=(avail_dates[0], avail_dates[-1]))
+    
+    # Date Filtering Logic
+    if isinstance(date_sel, tuple) and len(date_sel) == 2:
+        map_df = filt_df[(filt_df['Formatted_Date'] >= date_sel[0]) & (filt_df['Formatted_Date'] <= date_sel[1])]
     else:
-        map_df = filt_df[filt_df['Formatted_Date'] == date_selection]
+        map_df = filt_df[filt_df['Formatted_Date'] == date_sel]
 
     if not map_df.empty:
-        # Timing Control - DEFAULT TO SHOW ALL
+        # Timing Control
         times = sorted(map_df['Formatted_Time'].unique())
-        options_with_all = ["SHOW ALL"] + [t.strftime("%H:%M") for t in times]
-        selected_time_str = hc2.select_slider("Timing Control", options=options_with_all, value="SHOW ALL")
+        time_options = ["SHOW ALL"] + [t.strftime("%H:%M") for t in times]
+        selected_time_str = hc2.select_slider("Timing Control", options=time_options, value="SHOW ALL")
         
-        # Slice data for map
         if selected_time_str != "SHOW ALL":
             sel_t = pd.to_datetime(selected_time_str).time()
-            # 60 minute window for focus
             win_start = (pd.to_datetime(selected_time_str) - pd.Timedelta(minutes=60)).time()
-            map_data = map_df[(map_df['Formatted_Time'] <= sel_t) & (map_df['Formatted_Time'] >= win_start)]
+            render_df = map_df[(map_df['Formatted_Time'] <= sel_t) & (map_df['Formatted_Time'] >= win_start)]
         else:
-            map_data = map_df
+            render_df = map_df
 
-        # 5b. RENDER MAP
+        # 5b. RENDER
         layers = []
         if view_mode == "Midpoint Heatmap (Es-Cloud)":
-            clean_heat = map_data.dropna(subset=['Mid_Lat', 'Mid_Lon'])
-            clean_heat = clean_heat[clean_heat['Mid_Lat'] != 0] # Kill 0,0 Ocean points
+            clean_heat = render_df.dropna(subset=['Mid_Lat', 'Mid_Lon'])
+            clean_heat = clean_heat[clean_heat['Mid_Lat'] > 0]
             layers.append(pdk.Layer(
                 'HeatmapLayer', data=clean_heat, get_position='[Mid_Lon, Mid_Lat]',
                 radius_pixels=80, intensity=1, threshold=0.03,
                 color_range=[[211, 47, 47, 50], [211, 47, 47, 180], [255, 255, 255, 255]]
             ))
-            tooltip_config = True
         else:
-            clean_arc = map_data.dropna(subset=['DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon'])
-            clean_arc = clean_arc[clean_arc['DX_Lat'] != 0]
-            path_density = clean_arc.groupby(['DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon']).size().reset_index(name='density')
+            clean_arc = render_df.dropna(subset=['DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon'])
+            clean_arc = clean_arc[clean_arc['DX_Lat'] > 0]
+            path_data = clean_arc.groupby(['DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon']).size().reset_index(name='density')
             layers.append(pdk.Layer(
-                'ArcLayer', data=path_density,
+                'ArcLayer', data=path_data,
                 get_source_position='[DX_Lon, DX_Lat]', get_target_position='[ST_Lon, ST_Lat]',
                 get_width='density * 2.0',
                 get_source_color=[211, 47, 47, 140], get_target_color=[255, 255, 255, 140],
                 pickable=True
             ))
-            tooltip_config = {"text": "Logs on this path: {density}"}
 
         st.pydeck_chart(pdk.Deck(
             map_style='mapbox://styles/mapbox/dark-v10',
             initial_view_state=pdk.ViewState(latitude=39, longitude=-98, zoom=3.8, pitch=45),
             layers=layers,
-            tooltip=tooltip_config
+            tooltip={"text": "Density: {density}"} if view_mode != "Midpoint Heatmap (Es-Cloud)" else True
         ))
-    else:
-        st.warning("Data Module Offline: No logs found for selected parameters.")
