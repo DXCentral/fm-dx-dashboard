@@ -5,21 +5,60 @@ from google.cloud import bigquery
 from google.oauth2 import service_account
 from streamlit_option_menu import option_menu
 
-# 1. THEME & UI STYLING
+# 1. THEME & UI STYLING (Sleek/Narrow Refinement)
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
 
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;700&display=swap');
-    html, body, [class*="st-"] { font-family: 'Oswald', sans-serif; background-color: #000000; color: #FFFFFF; }
-    h1, h2, h3, h4 { color: #D32F2F !important; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; }
-    [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.5rem; }
-    [data-testid="stSidebar"] { background-color: #0A0A0A; border-right: 1px solid #222; }
-    div.stButton > button { background-color: #D32F2F !important; color: white !important; border-radius: 25px !important; width: 100%; }
+    @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;700&display=swap');
+    
+    /* Global Font Tweak: Using Light (300) or Extra Light (200) for that thin look */
+    html, body, [class*="st-"] {
+        font-family: 'Oswald', sans-serif;
+        background-color: #000000;
+        color: #FFFFFF;
+        font-weight: 300;
+    }
+    
+    h1, h2, h3, h4 { 
+        color: #D32F2F !important; 
+        font-weight: 400; 
+        text-transform: uppercase; 
+        letter-spacing: 3px; /* Narrow and spaced out */
+    }
+
+    /* Tightening the Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #0A0A0A;
+        border-right: 1px solid #1A1A1A;
+        min-width: 200px !important; /* Narrower sidebar */
+        max-width: 250px !important;
+    }
+
+    /* Shrink Sidebar Text */
+    [data-testid="stSidebar"] .stMarkdown p {
+        font-size: 0.85rem !important;
+        letter-spacing: 1px;
+    }
+
+    [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
+    [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
+
+    /* Narrow Reset Button */
+    div.stButton > button {
+        background-color: #D32F2F !important;
+        color: white !important;
+        border-radius: 4px !important; /* Square-ish for a tech look */
+        border: none !important;
+        padding: 5px 20px !important;
+        font-size: 0.8rem !important;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. DATA LOADING (Keeping our 30-day cache for speed)
+# 2. DATA LOADING (Standard 30-Day Cache)
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -33,20 +72,20 @@ def load_data():
         
         df['Local_Date'] = pd.to_datetime(df['Local_Date']).dt.date
         latest_date = df['Local_Date'].max()
-        if 'Mid_Point' in df.columns:
-            df[['Mid_Lat', 'Mid_Lon']] = df['Mid_Point'].str.split(',', expand=True).apply(pd.to_numeric, errors='coerce')
         return df, latest_date
     except Exception as e:
-        st.error(f"System Link Failure: {e}")
+        st.error(f"Link Error: {e}")
         return pd.DataFrame(), "Error"
 
 df, last_log_date = load_data()
 
-# 3. SIDEBAR NAVIGATION
+# 3. SIDEBAR NAVIGATION (Reduced Font Size)
 with st.sidebar:
     st.image("SEDAP Banner.png", use_container_width=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    
     selected_page = option_menu(
-        menu_title="SYSTEM MODULES", # Updated Heading
+        menu_title="SYSTEM MODULES",
         options=[
             "DASHBOARD OVERVIEW", 
             "ES-CLOUD TRACKER", 
@@ -60,80 +99,46 @@ with st.sidebar:
         menu_icon="terminal",
         default_index=0,
         styles={
-            "container": {"background-color": "#0A0A0A", "padding": "5px"},
-            "nav-link-selected": {"background-color": "#D32F2F"},
+            "container": {"background-color": "#0A0A0A", "padding": "0px"},
+            "icon": {"color": "#888", "font-size": "14px"}, # Smaller icons
+            "nav-link": {
+                "color": "white", 
+                "font-family": "Oswald", 
+                "font-size": "12px", # Narrower, smaller font
+                "text-align": "left", 
+                "margin": "0px", 
+                "letter-spacing": "1px",
+                "text-transform": "uppercase"
+            },
+            "nav-link-selected": {"background-color": "#D32F2F", "font-weight": "400"},
+            "menu-title": {"color": "#D32F2F", "font-family": "Oswald", "font-size": "10px", "letter-spacing": "3px"}
         }
     )
     st.markdown("---")
-    st.caption(f"LOG DATA THROUGH: {last_log_date}")
+    st.caption(f"LOGS THROUGH: {last_log_date}")
 
-# 4. STATIC FRAME (Header & Global Filters)
-st.image("SEDAP Banner.png", width=700)
-def reset_all():
-    for key in st.session_state.keys():
-        if key.startswith("filt_"): st.session_state[key] = "All"
+# 4. GLOBAL FILTER FRAME
+st.image("SEDAP Banner.png", width=600)
 
-with st.expander(label="GLOBAL FILTERS", expanded=True):
-    r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
-    f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key="filt_freq")
-    f_dxer = r1c2.selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().tolist()), key="filt_dxer")
-    f_station = r1c3.selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().tolist()), key="filt_station")
-    f_state = r1c4.selectbox("State", ["All"] + sorted(df['State'].dropna().unique().tolist()), key="filt_state")
-    f_country = r1c5.selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().tolist()), key="filt_country")
+# (Filter grid logic goes here - keep your existing 13-box grid)
+# ...
 
-    r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
-    f_dxer_co = r2c1.selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().tolist()), key="filt_dx_co")
-    f_dxer_st = r2c2.selectbox("DXer State", ["All"] + sorted(df['DXer_State_Prov'].dropna().unique().tolist()), key="filt_dx_st")
-    f_month = r2c3.selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key="filt_month")
-    f_year = r2c4.selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key="filt_year")
-    f_day = r2c5.selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key="filt_day")
-
-    r3c1, r3c2, r3c3 = st.columns(3)
-    f_dist = r3c1.selectbox("Distance Distribution", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().tolist()), key="filt_dist")
-    f_reg = r3c2.selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().tolist()), key="filt_reg")
-    rds_col = 'RDS_Decode_' if 'RDS_Decode_' in df.columns else 'RDS_Decode'
-    f_rds = r3c3.selectbox("RDS Decode?", ["All"] + sorted(df[rds_col].dropna().unique().tolist()), key="filt_rds")
-
-    bt_left, bt_mid, bt_right = st.columns([2, 1, 2])
-    bt_mid.button("RESET ALL FILTERS", on_click=reset_all)
-
-# APPLY GLOBAL FILTERS
-filt_df = df.copy()
-filter_map = {
-    'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state,
-    'Country': f_country, 'DXer_Country': f_dxer_co, 'DXer_State_Prov': f_dxer_st,
-    'Local_Month': f_month, 'Local_Year': f_year, 'Month_Day': f_day,
-    'Distance_Distribution': f_dist, 'DXer_Region': f_reg, rds_col: f_rds
-}
-for col, val in filter_map.items():
-    if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
-
-# 5. DYNAMIC MODULES
-st.markdown("---")
-if selected_page == "DASHBOARD OVERVIEW":
-    st.header("Operational Overview")
-    # (Dashboard stats here...)
-
-elif selected_page == "ES-CLOUD TRACKER":
-    st.header("Atmospheric Reflectivity (E-Cloud)")
-    # (Heatmap controls here...)
-
-elif selected_page == "GEOGRAPHIC RADIUS":
+# 5. GEOGRAPHIC RADIUS MODULE (Tab-based maps)
+if selected_page == "GEOGRAPHIC RADIUS":
     st.header("Regional Density Analysis")
-    # (Geo maps here...)
-
-elif selected_page == "TEMPORAL TRENDS":
-    st.header("Timing & Seasonal Patterns")
-    # (Month/Hour analysis here...)
-
-elif selected_page == "FREQUENCY & MUF":
-    st.header("MUF & Frequency Distribution")
-    # (MUF analysis here...)
-
-elif selected_page == "STATION & RDS IQ":
-    st.header("Station Intelligence")
-    # (PI Code / RDS analysis here...)
-
-elif selected_page == "RECEPTION DYNAMICS":
-    st.header("Path & Distance Dynamics")
-    # (Distance logic here...)
+    
+    # Using Tabs for a clean, non-scrolling interface
+    tab_usa, tab_can, tab_mex = st.tabs(["🇺🇸 UNITED STATES", "🇨🇦 CANADA", "🇲🇽 MEXICO"])
+    
+    with tab_usa:
+        st.subheader("US Log Density by State")
+        # Chloropleth map logic will go here
+        st.info("Loading US Spatial Map...")
+        
+    with tab_can:
+        st.subheader("Canadian Log Density by Province")
+        st.info("Loading Canada Spatial Map...")
+        
+    with tab_mex:
+        st.subheader("Mexican Log Density by State")
+        st.info("Loading Mexico Spatial Map...")
