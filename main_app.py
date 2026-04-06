@@ -14,7 +14,7 @@ if 'full_screen' not in st.session_state: st.session_state.full_screen = False
 if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
 
-# "View Full Screen" UI Cleaner
+# "View Full Screen" Logic (Hides Headers/Sidebar)
 if st.session_state.full_screen:
     st.markdown("""
         <style>
@@ -31,35 +31,39 @@ st.markdown("""
     h1, h2, h3, h4 { color: #D32F2F !important; font-family: 'Oswald', sans-serif !important; text-transform: uppercase; letter-spacing: 3px; }
     [data-testid="stSidebar"] { background-color: #0A0A0A; border-right: 1px solid #1A1A1A; min-width: 320px !important; }
     
-    /* REMOVE ALL BLACK HIGHLIGHTS / FOCUS RINGS */
+    /* 🛡️ THE FINAL FIX FOR BLACK HIGHLIGHTS */
+    button, [role="button"], .stButton>button {
+        outline: none !important;
+        box-shadow: none !important;
+        border: none !important;
+        -webkit-tap-highlight-color: transparent !important;
+    }
+    .stButton>button:focus, .stButton>button:active, .stButton>button:focus-visible {
+        outline: none !important;
+        box-shadow: none !important;
+        background-color: #D32F2F !important;
+        color: white !important;
+    }
     div.stButton > button { 
         background-color: #D32F2F !important; 
         color: white !important; 
         border-radius: 25px !important; 
-        border: none !important; 
         padding: 10px 25px !important; 
         text-transform: uppercase; 
         width: 100%; 
-        box-shadow: none !important;
-        outline: none !important;
-        -webkit-tap-highlight-color: transparent !important;
+        transition: all 0.2s ease;
     }
-    div.stButton > button:focus, div.stButton > button:active, div.stButton > button:hover {
-        background-color: #D32F2F !important;
-        color: white !important;
-        box-shadow: none !important;
-        outline: none !important;
-        border: none !important;
-    }
+    div.stButton > button:hover { background-color: #FF5252 !important; }
 
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
     
-    .watermark { position: absolute; bottom: 80px; right: 40px; opacity: 0.4; z-index: 1000; pointer-events: none; }
+    /* Watermark fixed position */
+    .watermark { position: absolute; bottom: 80px; right: 40px; z-index: 1000; pointer-events: none; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. DATA LOADING
+# 2. DATA LOADING (Deduplicated)
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -72,7 +76,7 @@ def load_data():
         df_logs = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`").to_dataframe()
         df_coords = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`").to_dataframe()
         
-        # Join Detection
+        # Smart column join
         l_dx = [c for c in df_logs.columns if 'Concatenated' in c and 'DX' in c][0]
         l_st = [c for c in df_logs.columns if 'Concatenated' in c and 'Station' in c][0]
         c_dx = [c for c in df_coords.columns if 'Concatenated' in c and 'DX' in c][0]
@@ -81,7 +85,6 @@ def load_data():
         df_coords = df_coords.drop_duplicates(subset=[c_dx, c_st])
         df = df_logs.merge(df_coords, left_on=[l_dx, l_st], right_on=[c_dx, c_st], how='left')
         
-        # Clean Coordinates
         for c in [c for c in df.columns if any(x in c for x in ['Lat','Lon','Long'])]:
             df[c] = pd.to_numeric(df[c], errors='coerce').astype('float32')
             
@@ -112,7 +115,7 @@ with st.sidebar:
         menu_title="DATA MODULES",
         options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"],
         icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
-        default_index=1 # Tracker
+        default_index=1 
     )
 
 # 4. GLOBAL FILTERS
@@ -142,19 +145,19 @@ if not st.session_state.full_screen:
         f_reg = r3c2.selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key="f_reg")
         f_rds = r3c3.selectbox("RDS Decode?", ["All"] + (sorted(df['RDS Decode?'].dropna().unique().astype(str).tolist()) if 'RDS Decode?' in df.columns else []), key="f_rds")
         
-        # Center the Reset Button
-        res_c1, res_c2, res_c3, res_c4, res_c5 = st.columns(5)
-        if res_c3.button("RESET ALL FILTERS", key="global_reset"):
-            reset_filters()
-            st.rerun()
-else:
-    # Sticky Filters for Full Screen Mode
-    f_freq, f_dxer, f_station, f_state, f_country, f_year = "All", "All", "All", "All", "All", "All"
+        # 🎯 CENTERED RESET BUTTON
+        bc1, bc2, bc_mid, bc4, bc5 = st.columns(5)
+        with bc_mid:
+            if st.button("RESET ALL FILTERS", key="global_reset"):
+                reset_filters()
+                st.rerun()
 
 filt_df = df.copy()
-# (Filter map logic goes here...)
+filter_map = {'Frequency': f_freq if not st.session_state.full_screen else "All", 'DXer': f_dxer if not st.session_state.full_screen else "All", 'Station': f_station if not st.session_state.full_screen else "All", 'State': f_state if not st.session_state.full_screen else "All", 'Country': f_country if not st.session_state.full_screen else "All"}
+for col, val in filter_map.items():
+    if val != "All": filt_df = filt_df[filt_df[col].astype(str) == val]
 
-# 5. DASHBOARD
+# 5. PAGE LOGIC: DASHBOARD
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
@@ -167,7 +170,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m7.metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df.head(100), width='stretch', hide_index=True)
 
-# 6. ES-CLOUD TRACKER
+# 6. PAGE LOGIC: ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
     if not st.session_state.full_screen:
         st.header("Ionospheric Propagation Analysis")
@@ -175,40 +178,56 @@ elif selected_page == "ES-CLOUD TRACKER":
         st.session_state.last_mode = view_mode
     else:
         view_mode = st.session_state.get('last_mode', "Midpoint Heatmap (Es-Cloud)")
-    
+
+    # 🛠️ CONTROLS (PLACED ABOVE MAP)
     hc1, hc2 = st.columns([1, 2])
     with hc1:
+        range_enabled = st.checkbox("Enable Date Range Mode", value=True) # 🌟 DEFAULT TO RANGE MODE (SHOW ALL)
+        avail_days = sorted(filt_df['Date_Obj'].unique())
+        if not range_enabled:
+            date_sel = st.date_input("Select Event Date", value=avail_days[-1])
+            map_df = filt_df[filt_df['Date_Obj'] == date_sel]
+        else:
+            # 🌟 DEFAULT TO SHOWING ALL DATES
+            date_range = st.date_input("Select Date Range", value=(avail_days[0], avail_days[-1]))
+            map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])] if len(date_range) == 2 else filt_df[filt_df['Date_Obj'] == date_range[0]]
+        
+        st.session_state.current_map_df = map_df
+        speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "4x": {"delay": 0.01, "step": 4}}
+        play_speed = st.selectbox("Playback Speed", options=list(speed_sets.keys()), index=1)
+        st.session_state.last_speed = play_speed
+        
         if not st.session_state.full_screen:
-            # Explicit Checkbox + Selectors
-            range_on = st.checkbox("Enable Date Range Mode", value=False)
-            avail_days = sorted(filt_df['Date_Obj'].unique())
-            if not range_on:
-                date_sel = st.date_input("Select Event Date", value=avail_days[-1])
-                map_df = filt_df[filt_df['Date_Obj'] == date_sel]
-            else:
-                date_range = st.date_input("Select Date Range", value=(avail_days[0], avail_days[-1]))
-                map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])] if len(date_range) == 2 else filt_df[filt_df['Date_Obj'] == date_range[0]]
-            
-            st.session_state.last_date_df = map_df
-            speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "4x": {"delay": 0.01, "step": 4}}
-            play_speed = st.selectbox("Playback Speed", options=list(speed_sets.keys()), index=1)
-            st.session_state.last_speed = play_speed
-            
             if st.button("📺 VIEW FULL SCREEN"):
                 st.session_state.full_screen = True
                 st.rerun()
         else:
-            map_df = st.session_state.get('last_date_df', filt_df)
-            play_speed = st.session_state.get('last_speed', "2x")
-            speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "4x": {"delay": 0.01, "step": 4}}
+            if st.button("❌ EXIT FULL SCREEN"):
+                st.session_state.full_screen = False
+                st.rerun()
 
     if not map_df.empty:
         times = sorted(map_df['Time_Str'].dropna().unique().tolist())
-        current_time = times[min(st.session_state.p_idx, len(times)-1)]
+        # 🌟 DEFAULT TO SHOW ALL TIME
+        if 'p_idx' not in st.session_state: st.session_state.p_idx = -1 
         
-        t_obj = datetime.datetime.strptime(current_time, '%H:%M')
-        t_start = (t_obj - datetime.timedelta(minutes=60)).strftime('%H:%M')
-        render_df = map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= t_start)]
+        sel_time = hc2.select_slider("Time Control", options=["SHOW ALL"] + times, value="SHOW ALL" if not st.session_state.playing else times[st.session_state.p_idx])
+
+        # 🎬 PLAYBACK BUTTONS (ABOVE MAP)
+        pb1, pb2, pb3, pb4 = st.columns([1,1,1,1])
+        if pb1.button("▶ PLAY"): st.session_state.playing = True; st.session_state.p_idx = 0; st.rerun()
+        if pb2.button("⏹ STOP"): st.session_state.playing = False; st.rerun()
+        pb3.write(f"## 🕒 {times[st.session_state.p_idx] if st.session_state.playing else sel_time}")
+
+        # 🗺️ THE MAP (TALL BOX)
+        current_time = times[st.session_state.p_idx] if st.session_state.playing else sel_time
+        
+        if current_time != "SHOW ALL":
+            t_obj = datetime.datetime.strptime(current_time, '%H:%M')
+            t_start = (t_obj - datetime.timedelta(minutes=60)).strftime('%H:%M')
+            render_df = map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= t_start)]
+        else:
+            render_df = map_df
 
         layers = []
         if view_mode == "Midpoint Heatmap (Es-Cloud)":
@@ -217,29 +236,18 @@ elif selected_page == "ES-CLOUD TRACKER":
         else:
             layers.append(pdk.Layer('LineLayer', data=render_df[[dx_lat, dx_lon, st_lat, st_lon]].dropna(), get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
 
-        # THE MAP BOX: Physical height 850px, Zoom 3.5, Lat 34 to see Yucatan and Canada
         st.pydeck_chart(pdk.Deck(
             map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-            initial_view_state=pdk.ViewState(latitude=34, longitude=-95, zoom=3.5, pitch=0),
+            initial_view_state=pdk.ViewState(latitude=38, longitude=-95, zoom=3.5, pitch=0),
             layers=layers,
-            height=850
+            height=1000 # 🌟 MASSIVE MAP HEIGHT
         ))
 
-        # CONTROLS GRID (Restored Play/Stop to Standard mode too)
-        ctrl_c1, ctrl_c2, ctrl_c3, ctrl_c4 = st.columns([1,1,1,1])
-        if ctrl_c1.button("▶ PLAY"): st.session_state.playing = True; st.rerun()
-        if ctrl_c2.button("⏹ STOP"): st.session_state.playing = False; st.rerun()
-        ctrl_c3.write(f"## 🕒 {current_time}")
-        if st.session_state.full_screen:
-            if ctrl_c4.button("❌ EXIT FULL SCREEN"): st.session_state.full_screen = False; st.rerun()
-        else:
-            sel_time = hc2.select_slider("Time Control", options=times, value=current_time)
-            if not st.session_state.playing: st.session_state.p_idx = times.index(sel_time)
-
-        st.markdown("""<div class="watermark"><img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" width="220"></div>""", unsafe_allow_html=True)
+        # 🏷️ LOGO WATERMARK
+        st.markdown("""<div class="watermark"><img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="width: 250px; opacity: 0.4;"></div>""", unsafe_allow_html=True)
         
         if st.session_state.playing:
-            conf = speed_sets[play_speed]
+            conf = speed_sets[st.session_state.last_speed]
             if st.session_state.p_idx + conf['step'] < len(times):
                 st.session_state.p_idx += conf['step']
                 time.sleep(conf['delay'])
