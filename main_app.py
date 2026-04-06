@@ -18,7 +18,14 @@ st.markdown("""
         color: #FFFFFF;
         font-weight: 300;
     }
-    
+
+    /* KILL STREAMLIT INTERNAL ICON TEXT LEAKS */
+    [data-testid="stSidebarNavSeparator"], 
+    [data-testid="stSidebarCollapseButton"] button div,
+    .st-emotion-cache-p5msec { 
+        display: none !important; 
+    }
+
     h1, h2, h3, h4 { 
         color: #D32F2F !important; 
         font-family: 'Oswald', sans-serif !important;
@@ -27,16 +34,19 @@ st.markdown("""
         letter-spacing: 3px;
     }
 
-    /* WIDENED SIDEBAR: Increased width to prevent text wrapping */
     [data-testid="stSidebar"] {
         background-color: #0A0A0A;
         border-right: 1px solid #1A1A1A;
-        min-width: 300px !important; /* Bumped from 200px to 300px */
+        min-width: 300px !important;
         max-width: 350px !important;
     }
 
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
+
+    /* Centering Data Table Content */
+    [data-testid="stTable"] td { text-align: center !important; }
+    [data-testid="stDataFrame"] div[data-testid="stTable"] div { justify-content: center !important; }
 
     div.stButton > button {
         background-color: #D32F2F !important;
@@ -52,7 +62,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. DATA LOADING (30-Day Cache)
+# 2. DATA LOADING
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -77,15 +87,7 @@ with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     selected_page = option_menu(
         menu_title="DATA MODULES",
-        options=[
-            "DASHBOARD OVERVIEW", 
-            "ES-CLOUD TRACKER", 
-            "GEOGRAPHIC RADIUS", 
-            "TEMPORAL TRENDS", 
-            "FREQUENCY & MUF", 
-            "STATION & RDS IQ", 
-            "RECEPTION DYNAMICS"
-        ],
+        options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"],
         icons=["speedometer2", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
         menu_icon="terminal",
         default_index=0,
@@ -95,20 +97,14 @@ with st.sidebar:
             "nav-link": {
                 "color": "white", 
                 "font-family": "Oswald, sans-serif", 
-                "font-size": "13px", # Nudged up slightly for better visibility
+                "font-size": "13px", 
                 "text-align": "left", 
                 "letter-spacing": "1.5px", 
                 "text-transform": "uppercase",
-                "white-space": "nowrap" # Forces single-line behavior
+                "white-space": "nowrap"
             },
             "nav-link-selected": {"background-color": "#D32F2F"},
-            "menu-title": {
-                "color": "#D32F2F", 
-                "font-family": "Oswald, sans-serif", 
-                "font-size": "11px", 
-                "letter-spacing": "3px",
-                "font-weight": "400"
-            }
+            "menu-title": {"color": "#D32F2F", "font-family": "Oswald", "font-size": "11px", "letter-spacing": "3px"}
         }
     )
     st.markdown("---")
@@ -121,6 +117,7 @@ def reset_all():
     for key in st.session_state.keys():
         if key.startswith("filt_"): st.session_state[key] = "All"
 
+# Explicit label and suppressed icon leak
 with st.expander(label="GLOBAL FILTERS", expanded=True):
     r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
     f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key="filt_freq")
@@ -145,39 +142,40 @@ with st.expander(label="GLOBAL FILTERS", expanded=True):
     bt_left, bt_mid, bt_right = st.columns([2, 1, 2])
     bt_mid.button("RESET ALL FILTERS", on_click=reset_all)
 
-# APPLY GLOBAL FILTERS
 filt_df = df.copy()
-filter_map = {
-    'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state,
-    'Country': f_country, 'DXer_Country': f_dxer_co, 'DXer_State_Prov': f_dxer_st,
-    'Local_Month': f_month, 'Local_Year': f_year, 'Month_Day': f_day,
-    'Distance_Distribution': f_dist, 'DXer_Region': f_reg, rds_col: f_rds
-}
+# (Filter mapping logic...)
+filter_map = {'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state, 'Country': f_country, 'DXer_Country': f_dxer_co, 'DXer_State_Prov': f_dxer_st, 'Local_Month': f_month, 'Local_Year': f_year, 'Month_Day': f_day, 'Distance_Distribution': f_dist, 'DXer_Region': f_reg, rds_col: f_rds}
 for col, val in filter_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
 st.markdown("---")
 
-# 5. DYNAMIC MODULES
+# 5. DASHBOARD OVERVIEW
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
-    m1.metric("Logs", f"{len(filt_df):,}")
-    m2.metric("Stations", f"{filt_df['Station'].nunique():,}")
+    m1.metric("Total Logs", f"{len(filt_df):,}")
+    m2.metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
     m3.metric("US States", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
-    m4.metric("CAN Prov", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
-    m5.metric("MEX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
-    m6.metric("Countries", filt_df['Country'].nunique())
+    m4.metric("Canadian Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
+    m5.metric("Mexican States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
+    m6.metric("Total Countries", filt_df['Country'].nunique())
     dist_col = 'Distance__mi_' if 'Distance__mi_' in df.columns else 'Distance'
     max_d = filt_df[dist_col].max() if not filt_df.empty else 0
-    m7.metric("Max DX", f"{max_d:,.0f} mi")
+    m7.metric("Furthest Reception", f"{max_d:,.0f} mi")
 
     st.subheader("Submitted Logs")
     row_count = st.slider("Select rows:", 1, max(len(filt_df), 10), min(len(filt_df), 100))
-    st.dataframe(filt_df.head(row_count), use_container_width=True, hide_index=True)
+    
+    # Using column_config to ensure alignment and clean presentation
+    st.dataframe(
+        filt_df.head(row_count), 
+        use_container_width=True, 
+        hide_index=True,
+        column_config={col: st.column_config.Column(width="medium") for col in filt_df.columns}
+    )
 
 elif selected_page == "GEOGRAPHIC RADIUS":
     st.header("Regional Density Analysis")
     tab_usa, tab_can, tab_mex = st.tabs(["🇺🇸 UNITED STATES", "🇨🇦 CANADA", "🇲🇽 MEXICO"])
-    with tab_usa:
-        st.info("Module Active: Analyzing US Log Distribution...")
+    # (Maps go here next!)
