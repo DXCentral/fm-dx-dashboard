@@ -50,13 +50,11 @@ st.markdown("""
         outline: none !important;
     }
 
-    /* Red Hover Effect */
     div.stButton > button:hover {
         border-color: #D32F2F !important;
         color: #D32F2F !important;
     }
 
-    /* Force Focus/Active to stay Black (Kills the highlight) */
     div.stButton > button:focus, div.stButton > button:active, div.stButton > button:focus-visible {
         background-color: #000000 !important;
         color: #FFFFFF !important;
@@ -87,7 +85,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. DATA LOADING (Deduplicated)
+# 2. DATA LOADING
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -100,7 +98,6 @@ def load_data():
         df_logs = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`").to_dataframe()
         df_coords = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`").to_dataframe()
         
-        # Join Columns Detection
         l_dx = [c for c in df_logs.columns if 'Concatenated' in c and 'DX' in c][0]
         l_st = [c for c in df_logs.columns if 'Concatenated' in c and 'Station' in c][0]
         c_dx = [c for c in df_coords.columns if 'Concatenated' in c and 'DX' in c][0]
@@ -169,14 +166,21 @@ if not st.session_state.full_screen:
             reset_filters(); st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
+# Filter Application
+filt_df = df.copy()
+filter_map = {'Frequency': f_freq if not st.session_state.full_screen else "All", 'DXer': f_dxer if not st.session_state.full_screen else "All", 'Station': f_station if not st.session_state.full_screen else "All", 'State': f_state if not st.session_state.full_screen else "All", 'Country': f_country if not st.session_state.full_screen else "All"}
+for col, val in filter_map.items():
+    if val != "All": filt_df = filt_df[filt_df[col].astype(str) == val]
+
 # 5. ES-CLOUD TRACKER
 if selected_page == "ES-CLOUD TRACKER":
     if not st.session_state.full_screen:
         st.header("Ionospheric Propagation Analysis")
-        view_mode = st.pills("MAP LAYER SELECTION", ["Midpoint Heatmap (Es-Cloud)", "Path Line Analysis (Signal Grid)"], default="Midpoint Heatmap (Es-Cloud)")
+        # RENAME APPLIED HERE
+        view_mode = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
         st.session_state.last_mode = view_mode
     else:
-        view_mode = st.session_state.get('last_mode', "Midpoint Heatmap (Es-Cloud)")
+        view_mode = st.session_state.get('last_mode', "Es Cloud Location Heatmap")
 
     hc1, hc2 = st.columns([1, 2])
     with hc1:
@@ -218,7 +222,7 @@ if selected_page == "ES-CLOUD TRACKER":
             render_df = map_df
 
         layers = []
-        if view_mode == "Midpoint Heatmap (Es-Cloud)":
+        if view_mode == "Es Cloud Location Heatmap":
             layers.append(pdk.Layer('HeatmapLayer', data=render_df[['Mid_Lat', 'Mid_Lon']].dropna(), get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, threshold=0.03,
                                    color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]))
         else:
@@ -246,4 +250,12 @@ if selected_page == "ES-CLOUD TRACKER":
 
 elif selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
-    # (Restored Dashboard 7-metric grid)
+    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
+    m1.metric("Total Logs", f"{len(filt_df):,}")
+    m2.metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
+    m3.metric("US States", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
+    m4.metric("CA Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
+    m5.metric("MX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
+    m6.metric("Total Countries", filt_df['Country'].nunique())
+    m7.metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
+    st.dataframe(filt_df.head(100), width='stretch', hide_index=True)
