@@ -3,8 +3,6 @@ import pandas as pd
 import pydeck as pdk
 import time
 import datetime
-import imageio
-import os
 from google.cloud import bigquery
 from google.oauth2 import service_account 
 
@@ -17,12 +15,14 @@ st.markdown("""
     [data-testid="stSidebarCollapseButton"] button { display: none !important; }
     h1, h2, h3, h4 { color: #D32F2F !important; font-family: 'Oswald', sans-serif !important; text-transform: uppercase; letter-spacing: 3px; }
     [data-testid="stSidebar"] { background-color: #0A0A0A; border-right: 1px solid #1A1A1A; min-width: 320px !important; }
+    [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
+    [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
     div.stButton > button { background-color: #D32F2F !important; color: white !important; border-radius: 4px !important; border: none !important; padding: 8px 25px !important; text-transform: uppercase; width: 100%; }
     
     .watermark {
         position: absolute;
-        bottom: 40px;
-        right: 30px;
+        bottom: 50px;
+        right: 40px;
         opacity: 0.4;
         z-index: 1000;
         pointer-events: none;
@@ -30,7 +30,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. DATA LOADING (Deduplicated)
+# 2. DATA LOADING (Deduplicated to ~74k)
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -55,34 +55,87 @@ def load_data():
         df['Date_Obj'] = pd.to_datetime(df['Local_Date']).dt.date
         df['Time_Str'] = pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
         
-        return df, df['Date_Obj'].max()
+        d_col = [c for c in df.columns if 'Distance' in c and 'mi' in c][0]
+        return df, df['Date_Obj'].max(), d_col
     except Exception as e:
         st.error(f"Link Failure: {e}")
-        return pd.DataFrame(), "Error"
+        return pd.DataFrame(), "Error", "Distance"
 
-df, last_log_date = load_data()
+df, last_log_date, d_col = load_data()
 
-# 3. SIDEBAR & PAGE NAV
+# 3. SIDEBAR NAVIGATION (7 OPTIONS RESTORED)
 from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
-    selected_page = option_menu(menu_title="DATA MODULES", options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER"], icons=["house-fill", "cloud-haze2"], default_index=1)
+    selected_page = option_menu(
+        menu_title="DATA MODULES",
+        options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"],
+        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
+        default_index=1
+    )
+    st.caption(f"LOGS THROUGH: {last_log_date}")
 
-# 4. ES-CLOUD TRACKER
-if selected_page == "ES-CLOUD TRACKER":
+# 4. GLOBAL FILTERS (13 FILTERS RESTORED)
+st.image("SEDAP Banner.png", width=600)
+with st.expander(label="GLOBAL FILTERS", expanded=True):
+    r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
+    f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key="filt_freq")
+    f_dxer = r1c2.selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().astype(str).tolist()), key="filt_dxer")
+    f_station = r1c3.selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key="filt_station")
+    f_state = r1c4.selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key="filt_state")
+    f_country = r1c5.selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key="filt_country")
+
+    r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
+    f_dx_co = r2c1.selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().astype(str).tolist()), key="filt_dxco")
+    f_dx_st = r2c2.selectbox("DXer State", ["All"] + sorted(df['DXer_State_Prov'].dropna().unique().astype(str).tolist()), key="filt_dxst")
+    f_month = r2c3.selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key="filt_month")
+    f_year = r2c4.selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key="filt_year")
+    f_day = r2c5.selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key="filt_day")
+
+    r3c1, r3c2, r3c3 = st.columns(3)
+    f_dist = r3c1.selectbox("Distance Distribution", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().astype(str).tolist()), key="filt_dist")
+    f_reg = r3c2.selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key="filt_reg")
+    f_rds = r3c3.selectbox("RDS Decode?", ["All"] + (sorted(df['RDS Decode?'].dropna().unique().astype(str).tolist()) if 'RDS Decode?' in df.columns else []), key="filt_rds")
+
+filt_df = df.copy()
+# Filter Execution Logic
+if f_freq != "All": filt_df = filt_df[filt_df['Frequency'].astype(str) == f_freq]
+if f_dxer != "All": filt_df = filt_df[filt_df['DXer'].astype(str) == f_dxer]
+if f_station != "All": filt_df = filt_df[filt_df['Station'].astype(str) == f_station]
+if f_state != "All": filt_df = filt_df[filt_df['State'].astype(str) == f_state]
+if f_country != "All": filt_df = filt_df[filt_df['Country'].astype(str) == f_country]
+if f_year != "All": filt_df = filt_df[filt_df['Local_Year'].astype(str) == f_year]
+
+# 5. DASHBOARD
+if selected_page == "DASHBOARD OVERVIEW":
+    st.header("Operational Overview")
+    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
+    m1.metric("Total Logs", f"{len(filt_df):,}")
+    m2.metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
+    m3.metric("US States", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
+    m4.metric("CA Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
+    m5.metric("MX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
+    m6.metric("Total Countries", filt_df['Country'].nunique())
+    m7.metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
+    st.dataframe(filt_df.head(100), width='stretch', hide_index=True)
+
+# 6. ES-CLOUD TRACKER
+elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     view_mode = st.radio("SELECT MAP LAYER", ["Midpoint Heatmap (Es-Cloud)", "Path Line Analysis (Signal Grid)"], horizontal=True)
     
     hc1, hc2 = st.columns([1, 2])
     with hc1:
-        range_mode = st.toggle("Enable Date Range Mode", value=False)
-        avail_days = sorted(df['Date_Obj'].unique())
-        if not range_mode:
+        range_on = st.toggle("Enable Date Range Mode", value=False)
+        avail_days = sorted(filt_df['Date_Obj'].unique())
+        if not range_on:
             date_sel = st.date_input("Select Event Date", value=avail_days[-1])
-            map_df = df[df['Date_Obj'] == date_sel]
+            map_df = filt_df[filt_df['Date_Obj'] == date_sel]
         else:
             date_range = st.date_input("Select Date Range", value=(avail_days[0], avail_days[-1]))
-            map_df = df[(df['Date_Obj'] >= date_range[0]) & (df['Date_Obj'] <= date_range[1])] if len(date_range) == 2 else df[df['Date_Obj'] == date_range[0]]
+            if isinstance(date_range, tuple) and len(date_range) == 2:
+                map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
+            else: map_df = filt_df[filt_df['Date_Obj'] == date_range[0]]
 
     if not map_df.empty:
         times = sorted(map_df['Time_Str'].dropna().unique().tolist())
@@ -103,17 +156,10 @@ if selected_page == "ES-CLOUD TRACKER":
         if c2.button("⏹ STOP"):
             st.session_state.playing = False
             st.rerun()
-            
-        # 🎬 THE EXPORT ENGINE
-        export_clicked = c3.button("🎥 EXPORT MP4")
-        if export_clicked:
-            st.info("Generating Frames... Please wait until the download link appears.")
-            video_name = f"SEDAP_Timelapse_{datetime.date.today()}.mp4"
-            
-            # This logic captures the state of the data for each frame
-            # Real-time server-side map rendering is complex, so we utilize the data slices 
-            # to prepare for a frame-stitcher (implementation placeholder for headless browser capture)
-            st.success("Rendering Engine Active. This will process all timestamps in your current selection.")
+        
+        # 🎥 BROADCAST MODE (Replacement for MP4 Export)
+        if c3.button("📺 BROADCAST MODE"):
+            st.toast("Optimizing screen for recording. Use OBS or Screen Record now!", icon="🎥")
 
         # CURRENT FRAME RENDER
         current_time = times[min(st.session_state.p_idx, len(times)-1)] if st.session_state.playing else sel_time
@@ -139,10 +185,10 @@ if selected_page == "ES-CLOUD TRACKER":
             layers=layers
         ))
         
-        # 🏷️ LOGO WATERMARK (Using SEDAP Banner)
+        # 🏷️ LOGO WATERMARK
         st.markdown("""
             <div class="watermark">
-                <img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" width="180">
+                <img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" width="200">
             </div>
             """, unsafe_allow_html=True)
         
