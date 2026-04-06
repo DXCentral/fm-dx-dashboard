@@ -1,10 +1,13 @@
 import streamlit as st
 import pandas as pd
+import pydeck as pdk
 from google.cloud import bigquery
 from google.oauth2 import service_account
+from streamlit_option_menu import option_menu
+import time
 
-# 1. THEME & STYLING
-st.set_page_config(layout="wide", page_title="Sporadic Es Data Analysis")
+# 1. THEME & UI STYLING (The "Command Center" Look)
+st.set_page_config(layout="wide", page_title="SEDAP Control Center")
 
 st.markdown("""
     <style>
@@ -16,42 +19,33 @@ st.markdown("""
         color: #FFFFFF;
     }
     
-    h1, h2, h3, h4 { color: #D32F2F !important; font-weight: 700; text-transform: uppercase; }
-    [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; }
+    h1, h2, h3, h4 { color: #D32F2F !important; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; }
+    [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.5rem; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 1.1rem; text-transform: uppercase; }
 
-    /* NUCLEAR CSS FOR RESET BUTTON: No highlights, no backgrounds except Red */
+    /* Clean Sidebar Styling */
+    [data-testid="stSidebar"] { background-color: #0A0A0A; border-right: 1px solid #222; }
+
+    /* Reset Button: Pure Red, No Highlights */
     div.stButton > button {
         background-color: #D32F2F !important;
         color: white !important;
         border-radius: 25px !important;
         border: none !important;
         padding: 10px 40px !important;
-        font-family: 'Oswald', sans-serif !important;
         width: 100%;
-        box-shadow: none !important;
+        font-family: 'Oswald', sans-serif !important;
     }
-    /* This targets the specific text container inside the button to kill the black background */
-    div.stButton > button div, 
-    div.stButton > button p, 
-    div.stButton > button span, 
-    div.stButton > button:active, 
-    div.stButton > button:focus {
-        background-color: transparent !important;
-        background: transparent !important;
-        color: white !important;
-    }
-    div.stButton > button:hover {
-        background-color: #b22828 !important;
-        color: white !important;
-    }
+    div.stButton > button p { background-color: transparent !important; }
     
-    .log-info {
+    .log-info-box {
         font-size: 1.2rem;
         color: #FFFFFF;
-        margin-bottom: 20px;
+        margin-bottom: 25px;
         text-transform: uppercase;
         font-weight: 300;
+        border-left: 4px solid #D32F2F;
+        padding-left: 15px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -68,29 +62,51 @@ def load_data():
         query = "SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`"
         df = client.query(query).to_dataframe()
         
-        latest_date = "Unknown"
-        if 'Local_Date' in df.columns:
-            latest_date = pd.to_datetime(df['Local_Date']).max().strftime('%Y-%m-%d')
+        # Date & Time Processing
+        df['Local_Date'] = pd.to_datetime(df['Local_Date']).dt.date
+        df['Clean_Time'] = pd.to_datetime(df['Local_Time'], errors='coerce').dt.time
+        latest_date = df['Local_Date'].max()
+        
+        if 'Mid_Point' in df.columns:
+            df[['Mid_Lat', 'Mid_Lon']] = df['Mid_Point'].str.split(',', expand=True).apply(pd.to_numeric, errors='coerce')
             
         return df, latest_date
     except Exception as e:
-        st.error(f"Connection Error: {e}")
+        st.error(f"System Link Failure: {e}")
         return pd.DataFrame(), "Error"
 
 df, last_log_date = load_data()
 if df.empty: st.stop()
 
-# 3. HEADER SECTION
-st.image("SEDAP Banner.png", width=800)
-st.markdown(f'<div class="log-info">LOG DATA THROUGH: {last_log_date}</div>', unsafe_allow_html=True)
+# 3. SIDEBAR NAVIGATION (Looker-Style Red Box)
+with st.sidebar:
+    st.image("SEDAP Banner.png", use_container_width=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    selected_page = option_menu(
+        menu_title="SENSORS",
+        options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TIMING & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"],
+        icons=["speedometer2", "cloud-haze2", "geo-alt", "clock-history", "broadcast-pin", "graph-up"], 
+        menu_icon="cpu-fill",
+        default_index=0,
+        styles={
+            "container": {"background-color": "#0A0A0A", "padding": "5px"},
+            "icon": {"color": "white", "font-size": "18px"}, 
+            "nav-link": {"color": "white", "font-family": "Oswald", "font-size": "14px", "text-align": "left"},
+            "nav-link-selected": {"background-color": "#D32F2F"},
+        }
+    )
+    st.markdown("---")
+    st.caption(f"SYSTEM STATUS: ONLINE")
 
-# 4. RESET LOGIC
+# 4. STATIC FRAME (Header & Global Filters)
+st.image("SEDAP Banner.png", width=700)
+st.markdown(f'<div class="log-info-box">LOG DATA THROUGH: {last_log_date}</div>', unsafe_allow_html=True)
+
 def reset_all():
     for key in st.session_state.keys():
-        if key.startswith("filt_"):
-            st.session_state[key] = "All"
+        if key.startswith("filt_"): st.session_state[key] = "All"
 
-# 5. FILTERS GRID (Explicit label to avoid _arr)
 with st.expander(label="GLOBAL FILTERS", expanded=True):
     r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
     f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key="filt_freq")
@@ -115,7 +131,7 @@ with st.expander(label="GLOBAL FILTERS", expanded=True):
     bt_left, bt_mid, bt_right = st.columns([2, 1, 2])
     bt_mid.button("RESET ALL FILTERS", on_click=reset_all)
 
-# 6. FILTERING LOGIC
+# SHARED FILTER LOGIC
 filt_df = df.copy()
 filter_map = {
     'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state,
@@ -124,49 +140,45 @@ filter_map = {
     'Distance_Distribution': f_dist, 'DXer_Region': f_reg, rds_col: f_rds
 }
 for col, val in filter_map.items():
-    if val != "All":
-        filt_df = filt_df[filt_df[col].astype(str) == str(val)]
+    if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 7. CONTENT: GENERAL STATS
-st.header("General Stats")
+# 5. DYNAMIC CONTENT SLOTS
+st.markdown("---")
 
-m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
-m1.metric("Total Stations Logged", f"{len(filt_df):,}")
-m2.metric("Unique Stations Heard", f"{filt_df['Station'].nunique():,}")
-m3.metric("US States (Incl DC)", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
-m4.metric("Canadian Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
-m5.metric("Mexican States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
-m6.metric("Total Countries", filt_df['Country'].nunique())
+if selected_page == "DASHBOARD OVERVIEW":
+    st.header("Operational Overview")
+    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
+    m1.metric("Logs", f"{len(filt_df):,}")
+    m2.metric("Stations", f"{filt_df['Station'].nunique():,}")
+    m3.metric("US States", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
+    m4.metric("CAN Prov", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
+    m5.metric("MEX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
+    m6.metric("Countries", filt_df['Country'].nunique())
+    dist_col = 'Distance__mi_' if 'Distance__mi_' in df.columns else 'Distance'
+    m7.metric("Max DX", f"{filt_df[dist_col].max() if not filt_df.empty else 0:,.0f} mi")
 
-dist_col = 'Distance__mi_' if 'Distance__mi_' in df.columns else 'Distance'
-max_d = filt_df[dist_col].max() if not filt_df.empty else 0
-m7.metric("Furthest Reception", f"{max_d:,.0f} mi")
+    st.subheader("Submitted Logs")
+    row_count = st.slider("Select rows:", 1, max(len(filt_df), 10), min(len(filt_df), 100))
+    st.dataframe(filt_df.head(row_count), use_container_width=True, hide_index=True)
 
-# 8. SUBMITTED LOGS TABLE
-st.subheader("Submitted Logs")
-total_results = len(filt_df)
-slider_max = max(total_results, 10) 
-default_val = min(total_results, 100)
+elif selected_page == "ES-CLOUD TRACKER":
+    st.header("Atmospheric Reflectivity (E-Cloud)")
+    # (We will build the Time-Lapse code here next)
+    st.info("Module Loading... Time-Lapse controls will appear here.")
 
-row_count = st.slider("Select number of rows to display:", 1, slider_max, default_val)
-st.write(f"Showing **{row_count:,}** of **{total_results:,}** filtered results.")
+elif selected_page == "GEOGRAPHIC RADIUS":
+    st.header("Regional Density Analysis")
+    region = st.radio("SELECT REGION", ["UNITED STATES", "CANADA", "MEXICO"], horizontal=True)
+    st.info(f"Generating Geo-Map for {region}...")
 
-table_cols = [
-    'Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 
-    'Country', 'Local_Month', 'DXer', 'DXer_Concatenated_Location', dist_col
-]
-display_cols = [c for c in table_cols if c in filt_df.columns]
+elif selected_page == "TIMING & MUF":
+    st.header("Temporal Trends & MUF Analysis")
+    st.info("Module Loading... Timing Heatmaps and Peak Activity charts.")
 
-st.dataframe(
-    filt_df[display_cols].head(row_count), 
-    use_container_width=True, 
-    hide_index=True,
-    column_config={
-        "DXer_Concatenated_Location": st.column_config.TextColumn(width="large"),
-        "Station": st.column_config.TextColumn(width="medium"),
-        "Frequency": st.column_config.NumberColumn(format="%.1f"),
-    }
-)
+elif selected_page == "STATION & RDS IQ":
+    st.header("Station Intelligence & RDS Decodes")
+    st.info("Module Loading... PI Code usage and Top Station stats.")
 
-csv = filt_df.to_csv(index=False).encode('utf-8')
-st.download_button("EXPORT TABLE TO CSV", data=csv, file_name="submitted_logs.csv", mime="text/csv")
+elif selected_page == "RECEPTION DYNAMICS":
+    st.header("Path & Distance Dynamics")
+    st.info("Module Loading... Double-hop vs. Short-haul distribution.")
