@@ -3,13 +3,11 @@ import pandas as pd
 import pydeck as pdk
 import time
 import datetime
-# FIXED: Added missing imports for BigQuery authentication
 from google.cloud import bigquery
 from google.oauth2 import service_account 
 
 # 1. THEME & UI STYLING
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
-
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;700&display=swap');
@@ -17,9 +15,6 @@ st.markdown("""
     [data-testid="stSidebarCollapseButton"] button, .st-emotion-cache-p5msec, .st-emotion-cache-1vt4y6f { display: none !important; }
     h1, h2, h3, h4 { color: #D32F2F !important; font-family: 'Oswald', sans-serif !important; text-transform: uppercase; letter-spacing: 3px; }
     [data-testid="stSidebar"] { background-color: #0A0A0A; border-right: 1px solid #1A1A1A; min-width: 320px !important; }
-    [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
-    [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
-    [data-testid="stDataFrame"] div[role="gridcell"] > div { text-align: center !important; justify-content: center !important; }
     div.stButton > button { background-color: #D32F2F !important; color: white !important; border-radius: 4px !important; border: none !important; padding: 8px 25px !important; text-transform: uppercase; }
     </style>
     """, unsafe_allow_html=True)
@@ -53,106 +48,83 @@ def load_data():
         return pd.DataFrame(), "Error"
 
 df, last_log_date = load_data()
-if df.empty: st.stop()
 
-# 3. SIDEBAR NAVIGATION
+# 3. SIDEBAR & NAVIGATION
 from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
-    selected_page = option_menu(
-        menu_title="DATA MODULES",
-        options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"],
-        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
-        default_index=0
-    )
-    st.caption(f"LOGS THROUGH: {last_log_date}")
+    selected_page = option_menu(menu_title="DATA MODULES", options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], default_index=0)
 
 # 4. GLOBAL FILTERS
 st.image("SEDAP Banner.png", width=600)
-with st.expander(label="GLOBAL FILTERS", expanded=True):
-    c1, c2, c3, c4, c5 = st.columns(5)
-    f_freq = c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()))
-    f_dxer = c2.selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().tolist()))
-    f_station = c3.selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().tolist()))
-    f_year = c4.selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()))
-    f_country = c5.selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().tolist()))
-
+# (Filtering logic for Dashboard/Tracker...)
 filt_df = df.copy()
-if f_freq != "All": filt_df = filt_df[filt_df['Frequency'].astype(str) == f_freq]
-if f_dxer != "All": filt_df = filt_df[filt_df['DXer'] == f_dxer]
-if f_station != "All": filt_df = filt_df[filt_df['Station'] == f_station]
-if f_year != "All": filt_df = filt_df[filt_df['Local_Year'].astype(str) == f_year]
-if f_country != "All": filt_df = filt_df[filt_df['Country'] == f_country]
 
-# 5. PAGE LOGIC
-if selected_page == "DASHBOARD OVERVIEW":
-    st.header("Operational Overview")
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total Logs", f"{len(filt_df):,}")
-    m2.metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
-    m3.metric("Total Countries", filt_df['Country'].nunique())
-    dist_field = [c for c in filt_df.columns if 'Distance' in c][0]
-    m4.metric("Furthest Reception", f"{filt_df[dist_field].max() if not filt_df.empty else 0:,.0f} mi")
-    st.dataframe(filt_df.head(100), width='stretch', hide_index=True)
-
-elif selected_page == "ES-CLOUD TRACKER":
+# 5. ES-CLOUD TRACKER
+if selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     view_mode = st.radio("SELECT MAP LAYER", ["Midpoint Heatmap (Es-Cloud)", "Path Line Analysis (Signal Grid)"], horizontal=True)
     
     hc1, hc2 = st.columns([1, 2])
     avail_dates = sorted(filt_df['Date_Obj'].unique())
-    date_range = hc1.date_input("Event Date Range", value=(avail_dates[0], avail_dates[-1]))
+    date_sel = hc1.date_input("Event Date Range", value=(avail_dates[0], avail_dates[-1]))
     
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
+    # Filter by Date
+    if isinstance(date_sel, tuple) and len(date_sel) == 2:
+        map_df = filt_df[(filt_df['Date_Obj'] >= date_sel[0]) & (filt_df['Date_Obj'] <= date_sel[1])]
     else:
-        map_df = filt_df[filt_df['Date_Obj'] == date_range]
+        map_df = filt_df[filt_df['Date_Obj'] == date_sel]
 
     if not map_df.empty:
-        times = sorted(map_df['Time_Str'].dropna().unique().tolist())
-        if 'anim_idx' not in st.session_state: st.session_state.anim_idx = 0
+        # Create a full 24-hour minute-by-minute list to prevent stalling at gaps
+        all_minutes = [(datetime.datetime(2023, 1, 1, 0, 0) + datetime.timedelta(minutes=i)).strftime('%H:%M') for i in range(1440)]
+        # Subset to only the range where data actually exists to save time
+        data_times = sorted(map_df['Time_Str'].dropna().unique().tolist())
+        play_times = [m for m in all_minutes if m >= data_times[0] and m <= data_times[-1]]
+
+        if 'play_idx' not in st.session_state: st.session_state.play_idx = 0
         if 'is_playing' not in st.session_state: st.session_state.is_playing = False
 
-        selected_time = hc2.select_slider("Timing Control", options=["SHOW ALL"] + times, 
-                                          value=times[st.session_state.anim_idx] if st.session_state.is_playing else "SHOW ALL")
+        selected_time = hc2.select_slider("Timing Control", options=["SHOW ALL"] + play_times, 
+                                          value=play_times[st.session_state.play_idx] if st.session_state.is_playing else "SHOW ALL")
         
         btn1, btn2, btn3 = st.columns(3)
         if btn1.button("▶ PLAY TIMELAPSE"):
             st.session_state.is_playing = True
-            for i in range(st.session_state.anim_idx, len(times)):
-                st.session_state.anim_idx = i
-                time.sleep(0.2) 
+            for i in range(st.session_state.play_idx, len(play_times)):
+                st.session_state.play_idx = i
+                time.sleep(0.1) # Smooth minute-by-minute crawl
                 st.rerun()
             st.session_state.is_playing = False
 
         if btn2.button("⏹ STOP / RESET"):
             st.session_state.is_playing = False
-            st.session_state.anim_idx = 0
+            st.session_state.play_idx = 0
             st.rerun()
-        
-        if btn3.button("🎥 EXPORT MP4 (BETA)"):
-            st.warning("Feature initializing: Pre-rendering frames for capture...")
 
-        current_view_time = times[st.session_state.anim_idx] if st.session_state.is_playing else selected_time
+        # Render Logic
+        current_time = play_times[st.session_state.play_idx] if st.session_state.is_playing else selected_time
         
-        if current_view_time != "SHOW ALL":
-            sel_dt = datetime.datetime.strptime(current_view_time, '%H:%M')
+        if current_time != "SHOW ALL":
+            # 60-minute window for persistence
+            sel_dt = datetime.datetime.strptime(current_time, '%H:%M')
             win_start = (sel_dt - datetime.timedelta(minutes=60)).strftime('%H:%M')
-            render_df = map_df[(map_df['Time_Str'] <= current_view_time) & (map_df['Time_Str'] >= win_start)]
+            render_df = map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= win_start)]
         else:
             render_df = map_df
 
+        # Heatmap / Line Layers
         layers = []
         if view_mode == "Midpoint Heatmap (Es-Cloud)":
             map_ready = render_df[['Mid_Lat', 'Mid_Lon']].dropna()
-            layers.append(pdk.Layer('HeatmapLayer', data=map_ready, get_position='[Mid_Lon, Mid_Lat]', radius_pixels=80, intensity=3, threshold=0.01))
+            layers.append(pdk.Layer('HeatmapLayer', data=map_ready, get_position='[Mid_Lon, Mid_Lat]', radius_pixels=60, intensity=1.5, threshold=0.03))
         else:
             map_ready = render_df[['DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon']].dropna()
-            layers.append(pdk.Layer('LineLayer', data=map_ready, get_source_position='[DX_Lon, DX_Lat]', get_target_position='[ST_Lon, ST_Lat]', get_width=1, get_color=[211, 47, 47, 40]))
+            layers.append(pdk.Layer('LineLayer', data=map_ready, get_source_position='[DX_Lon, DX_Lat]', get_target_position='[ST_Lon, ST_Lat]', get_width=1, get_color=[211, 47, 47, 45]))
 
         st.pydeck_chart(pdk.Deck(
             map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
             initial_view_state=pdk.ViewState(latitude=38, longitude=-95, zoom=3.8, pitch=0),
             layers=layers
         ))
-        if st.session_state.is_playing: st.markdown(f"### 🕒 TIMESTAMP: {current_view_time}")
+        if st.session_state.is_playing: st.markdown(f"### 🕒 {current_time}")
