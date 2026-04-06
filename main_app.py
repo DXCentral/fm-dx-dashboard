@@ -13,8 +13,9 @@ st.set_page_config(layout="wide", page_title="SEDAP Control Center")
 if 'full_screen' not in st.session_state: st.session_state.full_screen = False
 if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
+if 'reset_count' not in st.session_state: st.session_state.reset_count = 0 # 🌟 THE FIX
 
-# "View Full Screen" Logic
+# Full Screen UI Cleaner
 if st.session_state.full_screen:
     st.markdown("""
         <style>
@@ -29,7 +30,7 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;700&display=swap');
     html, body, [class*="st-"] { font-family: 'Oswald', sans-serif !important; background-color: #000000; color: #FFFFFF; font-weight: 300; }
 
-    /* STEALTH BUTTONS - PILL STYLE */
+    /* STEALTH BUTTONS - PILL STYLE (No Highlights) */
     div.stButton > button {
         background-color: #000000 !important;
         color: #FFFFFF !important;
@@ -44,7 +45,7 @@ st.markdown("""
         -webkit-tap-highlight-color: transparent !important;
     }
     div.stButton > button:hover { border-color: #D32F2F !important; color: #D32F2F !important; }
-    div.stButton > button:focus, div.stButton > button:active { background-color: #000000 !important; color: #FFFFFF !important; outline: none !important; }
+    div.stButton > button:focus, div.stButton > button:active { background-color: #000000 !important; color: #FFFFFF !important; outline: none !important; box-shadow: none !important; }
 
     /* RED BORDER FOR ACTIVE PILLS */
     div[data-testid="stPills"] button[aria-checked="true"] { border: 2px solid #D32F2F !important; background-color: #000000 !important; color: #FFFFFF !important; }
@@ -81,7 +82,6 @@ def load_data():
         df_coords = df_coords.drop_duplicates(subset=[c_dx, c_st])
         df = df_logs.merge(df_coords, left_on=[l_dx, l_st], right_on=[c_dx, c_st], how='left')
         
-        # Coords
         dx_lat = [c for c in df.columns if 'DXer_Latitude' in c or ('DX' in c and 'Lat' in c)][0]
         dx_lon = [c for c in df.columns if 'DXer_Longitude' in c or ('DX' in c and 'Lon' in c)][0]
         st_lat = [c for c in df.columns if 'Station_Lat' in c or ('ST' in c and 'Lat' in c)][0]
@@ -110,18 +110,17 @@ with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     selected_page = option_menu(menu_title="DATA MODULES", options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], default_index=1)
 
-# 4. GLOBAL FILTERS (13 RESTORED & PERSISTENT)
-def reset_filters():
-    for key in st.session_state.keys():
-        if key.startswith("f_"): st.session_state[key] = "All"
-
+# 4. GLOBAL FILTERS (THE RESET FIX)
 if not st.session_state.full_screen:
     st.image("SEDAP Banner.png", width=600)
+    # 🌟 KEY GENERATOR: The reset_count makes every widget unique when reset is hit
+    rk = f"res_{st.session_state.reset_count}"
+    
     with st.expander(label="GLOBAL FILTERS", expanded=True):
         r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
-        f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key="f_freq")
-        f_dxer = r1c2.selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().astype(str).tolist()), key="f_dxer")
-        f_station = r1c3.selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key="f_station")
+        f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key=f"f1_{rk}")
+        f_dxer = r1c2.selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().astype(str).tolist()), key=f"f2_{rk}")
+        f_station = r1c3.selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key=f"f3_{rk}")
         f_state = r1c4.selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key="f_state")
         f_country = r1c5.selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key="f_country")
         
@@ -139,26 +138,15 @@ if not st.session_state.full_screen:
         
         st.markdown('<div class="reset-box">', unsafe_allow_html=True)
         if st.button("RESET ALL FILTERS", key="global_reset"):
-            reset_filters(); st.rerun()
+            st.session_state.reset_count += 1 # 🌟 This forces all f_ keys to "new" state
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 else:
-    # Full Screen Pulls from Session State
-    f_freq = st.session_state.get('f_freq', "All")
-    f_dxer = st.session_state.get('f_dxer', "All")
-    f_station = st.session_state.get('f_station', "All")
-    f_state = st.session_state.get('f_state', "All")
-    f_country = st.session_state.get('f_country', "All")
-    f_year = st.session_state.get('f_year', "All")
-    f_month = st.session_state.get('f_month', "All")
+    f_freq, f_dxer, f_station, f_state, f_country, f_year, f_month = "All", "All", "All", "All", "All", "All", "All"
 
 # FILTER APPLICATION
 filt_df = df.copy()
-filter_map = {
-    'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state, 'Country': f_country,
-    'DXer_Country': f_dxco if not st.session_state.full_screen else "All",
-    'DXer_State_Prov': f_dxst if not st.session_state.full_screen else "All",
-    'Local_Month': f_month, 'Local_Year': f_year
-}
+filter_map = {'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state, 'Country': f_country, 'Local_Year': f_year}
 for col, val in filter_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
@@ -174,7 +162,7 @@ if selected_page == "ES-CLOUD TRACKER":
     hc1, hc2 = st.columns([1, 2])
     with hc1:
         range_on = st.checkbox("Enable Date Range Mode", value=True) 
-        avail_days = sorted(filt_df['Date_Obj'].unique()) # 🌟 Respects Global Filters
+        avail_days = sorted(filt_df['Date_Obj'].unique()) 
         if not range_on:
             date_sel = st.date_input("Select Event Date", value=avail_days[-1])
             map_df = filt_df[filt_df['Date_Obj'] == date_sel]
@@ -190,8 +178,6 @@ if selected_page == "ES-CLOUD TRACKER":
 
     if not map_df.empty:
         times = sorted(map_df['Time_Str'].dropna().unique().tolist())
-        
-        # PLAYBACK CONTROLS
         pb1, pb2, pb_txt = st.columns([1, 1, 3])
         if pb1.button("▶ PLAY"): st.session_state.playing = True; st.session_state.p_idx = 0; st.rerun()
         if pb2.button("⏹ STOP"): st.session_state.playing = False; st.rerun()
@@ -202,7 +188,6 @@ if selected_page == "ES-CLOUD TRACKER":
             
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
 
-        # MAP RENDER (Using filt_df derived map_df)
         if current_time != "SHOW ALL":
             t_obj = datetime.datetime.strptime(current_time, '%H:%M')
             t_start = (t_obj - datetime.timedelta(minutes=60)).strftime('%H:%M')
