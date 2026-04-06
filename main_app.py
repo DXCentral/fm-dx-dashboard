@@ -4,7 +4,7 @@ import pydeck as pdk
 from google.cloud import bigquery
 from google.oauth2 import service_account
 from streamlit_option_menu import option_menu
-import time
+import datetime
 
 # 1. THEME & UI STYLING
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
@@ -14,14 +14,16 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;700&display=swap');
     html, body, [class*="st-"] { font-family: 'Oswald', sans-serif !important; background-color: #000000; color: #FFFFFF; font-weight: 300; }
     [data-testid="stSidebarCollapseButton"] button, [data-testid="stSidebarCollapseButton"] span, [data-testid="stExpanderIcon"], .st-emotion-cache-p5msec, .st-emotion-cache-1vt4y6f { display: none !important; visibility: hidden !important; }
-    h1, h2, h3, h4 { color: #D32F2F !important; font-family: 'Oswald', sans-serif !important; text-transform: uppercase; letter-spacing: 3px; }
+    h1, h2, h3, h4 { color: #D32F2F !important; font-family: 'Oswald', sans-serif !important; font-weight: 400; text-transform: uppercase; letter-spacing: 3px; }
     [data-testid="stSidebar"] { background-color: #0A0A0A; border-right: 1px solid #1A1A1A; min-width: 320px !important; }
+    [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
+    [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
     [data-testid="stDataFrame"] div[role="gridcell"] > div { text-align: center !important; justify-content: center !important; }
-    div.stButton > button { background-color: #D32F2F !important; color: white !important; border-radius: 4px !important; border: none !important; padding: 8px 25px !important; font-family: 'Oswald', sans-serif !important; text-transform: uppercase; }
+    div.stButton > button { background-color: #D32F2F !important; color: white !important; border-radius: 4px !important; border: none !important; padding: 8px 25px !important; font-family: 'Oswald', sans-serif !important; letter-spacing: 2px; text-transform: uppercase; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. DATA LOADING
+# 2. DATA LOADING (Directly using your CSV headers)
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -34,7 +36,7 @@ def load_data():
         df_logs = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`").to_dataframe()
         df_coords = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`").to_dataframe()
         
-        # JOIN using exact BQ underscored names
+        # Merge Logs to Coordinates
         df = df_logs.merge(
             df_coords, 
             left_on=['Concatenated_DXer_Location', 'Concatenated_Station_Location'], 
@@ -42,19 +44,21 @@ def load_data():
             how='left'
         )
 
-        # Coordinate Standardization
+        # Force Coordinates to Numbers (Floats)
         df['DX_Lat'] = pd.to_numeric(df['DXer_Latitude'], errors='coerce')
         df['DX_Lon'] = pd.to_numeric(df['DXer_Longitude'], errors='coerce')
         df['ST_Lat'] = pd.to_numeric(df['Station_Lat'], errors='coerce')
         df['ST_Lon'] = pd.to_numeric(df['Station_Long'], errors='coerce')
+        
+        # Manual Midpoint for Heatmap
         df['Mid_Lat'] = (df['DX_Lat'] + df['ST_Lat']) / 2
         df['Mid_Lon'] = (df['DX_Lon'] + df['ST_Lon']) / 2
         
-        # Keep Date/Time as Strings ONLY
-        df['Formatted_Date'] = pd.to_datetime(df['Local_Date']).dt.strftime('%Y-%m-%d')
+        # Convert Date/Time to Strings for Logic (Not for Map)
+        df['Date_Obj'] = pd.to_datetime(df['Local_Date']).dt.date
         df['Time_Str'] = pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
             
-        return df, df['Formatted_Date'].max()
+        return df, df['Date_Obj'].max()
     except Exception as e:
         st.error(f"Critical System Error: {e}")
         return pd.DataFrame(), "Error"
@@ -64,9 +68,16 @@ df, last_log_date = load_data()
 # 3. SIDEBAR NAVIGATION
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
-    selected_page = option_menu(menu_title="DATA MODULES", options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], default_index=0)
+    selected_page = option_menu(
+        menu_title="DATA MODULES",
+        options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"],
+        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
+        default_index=0,
+        styles={"nav-link-selected": {"background-color": "#D32F2F"}, "nav-link": {"font-size": "13px", "white-space": "nowrap"}}
+    )
+    st.caption(f"LOGS THROUGH: {last_log_date}")
 
-# 4. GLOBAL FILTERS
+# 4. SHARED FILTERS (Reset to V18 Logic)
 st.image("SEDAP Banner.png", width=600)
 with st.expander(label="GLOBAL FILTERS", expanded=True):
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -85,56 +96,67 @@ if f_country != "All": filt_df = filt_df[filt_df['Country'] == f_country]
 
 st.markdown("---")
 
-# 5. PAGE LOGIC
+# 5. MODULE LOGIC
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
-    # Metric logic...
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Logs", f"{len(filt_df):,}")
+    m2.metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
+    m3.metric("Total Countries", filt_df['Country'].nunique())
+    dist_field = 'Distance (mi)' if 'Distance (mi)' in filt_df.columns else 'Distance'
+    m4.metric("Furthest Reception", f"{filt_df[dist_field].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df.head(100), width='stretch', hide_index=True)
 
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     view_mode = st.radio("SELECT MAP LAYER", ["Midpoint Heatmap (Es-Cloud)", "Path Line Analysis (Signal Grid)"], horizontal=True)
     
-    # 5a. DYNAMIC CONTROLS
+    # DYNAMIC CONTROLS (Defaults to FULL dataset history)
     hc1, hc2 = st.columns([1, 2])
-    avail_dates = sorted(filt_df['Formatted_Date'].unique())
-    date_sel = hc1.date_input("Event Date Range", value=(pd.to_datetime(avail_dates[0]), pd.to_datetime(avail_dates[-1])))
+    avail_dates = sorted(filt_df['Date_Obj'].unique())
+    date_range = hc1.date_input("Event Date Range", value=(avail_dates[0], avail_dates[-1]))
     
-    # Filter map_df
-    start_str = date_sel[0].strftime('%Y-%m-%d')
-    end_str = date_sel[1].strftime('%Y-%m-%d') if len(date_sel) > 1 else start_str
-    map_df = filt_df[(filt_df['Formatted_Date'] >= start_str) & (filt_df['Formatted_Date'] <= end_str)]
+    # Filter map data by date
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
+    else:
+        map_df = filt_df[filt_df['Date_Obj'] == date_range]
 
     if not map_df.empty:
-        time_options = ["SHOW ALL"] + sorted(map_df['Time_Str'].dropna().unique().tolist())
+        # Timing Control Slider (Defaults to ALL)
+        times = sorted(map_df['Time_Str'].dropna().unique().tolist())
+        time_options = ["SHOW ALL"] + times
         selected_time = hc2.select_slider("Timing Control", options=time_options, value="SHOW ALL")
         
-        # 5b. PREPARE THE DATA FOR PYDECK (CRITICAL: NUMERIC ONLY)
         if selected_time != "SHOW ALL":
-            render_df = map_df[map_df['Time_Str'] == selected_time]
+            # 60-minute persistence window
+            sel_dt = datetime.datetime.strptime(selected_time, '%H:%M')
+            win_start = (sel_dt - datetime.timedelta(minutes=60)).strftime('%H:%M')
+            render_df = map_df[(map_df['Time_Str'] <= selected_time) & (map_df['Time_Str'] >= win_start)]
         else:
             render_df = map_df
 
+        # 5b. RENDER MAP (THE ERROR FIX: WE ONLY PASS NUMBERS)
         layers = []
         if view_mode == "Midpoint Heatmap (Es-Cloud)":
-            # WE ONLY PASS THE COORDS TO PYDECK TO AVOID SERIALIZATION ERRORS
-            map_ready = render_df[['Mid_Lat', 'Mid_Lon']].dropna()
-            map_ready = map_ready[map_ready['Mid_Lat'] > 0]
+            # WE ONLY SELECT THE COLUMNS THE MAP NEEDS. THIS KILLS THE SERIALIZATION ERROR.
+            map_data_ready = render_df[['Mid_Lat', 'Mid_Lon']].dropna()
+            map_data_ready = map_data_ready[map_data_ready['Mid_Lat'] > 0]
             
             layers.append(pdk.Layer(
-                'HeatmapLayer', data=map_ready, get_position='[Mid_Lon, Mid_Lat]',
+                'HeatmapLayer', data=map_data_ready, get_position='[Mid_Lon, Mid_Lat]',
                 radius_pixels=80, intensity=1, threshold=0.03,
                 color_range=[[211, 47, 47, 50], [211, 47, 47, 180], [255, 255, 255, 255]]
             ))
             ttip = True
         else:
-            # Arc Layer Cleanup - PASS ONLY REQUIRED NUMERIC COLUMNS
-            map_ready = render_df[['DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon']].dropna()
-            map_ready = map_ready[map_ready['DX_Lat'] > 0]
-            path_data = map_ready.groupby(['DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon']).size().reset_index(name='density')
+            # Path Analysis (3D Arc Grid)
+            map_data_ready = render_df[['DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon']].dropna()
+            map_data_ready = map_data_ready[map_data_ready['DX_Lat'] > 0]
+            path_counts = map_data_ready.groupby(['DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon']).size().reset_index(name='density')
             
             layers.append(pdk.Layer(
-                'ArcLayer', data=path_data,
+                'ArcLayer', data=path_counts,
                 get_source_position='[DX_Lon, DX_Lat]', get_target_position='[ST_Lon, ST_Lat]',
                 get_width='density * 2.0',
                 get_source_color=[211, 47, 47, 140], get_target_color=[255, 255, 255, 140],
@@ -142,10 +164,11 @@ elif selected_page == "ES-CLOUD TRACKER":
             ))
             ttip = {"text": "Logs on this path: {density}"}
 
-        # FINAL RENDER
         st.pydeck_chart(pdk.Deck(
             map_style='mapbox://styles/mapbox/dark-v10',
             initial_view_state=pdk.ViewState(latitude=39, longitude=-98, zoom=3.8, pitch=45),
             layers=layers,
             tooltip=ttip
         ))
+    else:
+        st.warning("Data Module Offline: No logs found for selected parameters.")
