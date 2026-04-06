@@ -34,7 +34,7 @@ def load_data():
         df_logs = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`").to_dataframe()
         df_coords = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`").to_dataframe()
         
-        # JOIN using exact BQ underscored names
+        # JOIN using the BQ underscored names
         df = df_logs.merge(
             df_coords, 
             left_on=['Concatenated_DXer_Location', 'Concatenated_Station_Location'], 
@@ -42,7 +42,7 @@ def load_data():
             how='left'
         )
 
-        # Coordinate Cleanup
+        # Coordinate Conversion & Cleanup
         df['DX_Lat'] = pd.to_numeric(df['DXer_Latitude'], errors='coerce')
         df['DX_Lon'] = pd.to_numeric(df['DXer_Longitude'], errors='coerce')
         df['ST_Lat'] = pd.to_numeric(df['Station_Lat'], errors='coerce')
@@ -50,7 +50,7 @@ def load_data():
         df['Mid_Lat'] = (df['DX_Lat'] + df['ST_Lat']) / 2
         df['Mid_Lon'] = (df['DX_Lon'] + df['ST_Lon']) / 2
         
-        # CRITICAL FIX: Convert Date/Time to STRINGS for Pydeck JSON compatibility
+        # CRITICAL FIX: Keep Date/Time as STRINGS for Pydeck JSON compatibility
         df['Formatted_Date'] = pd.to_datetime(df['Local_Date']).dt.date
         df['Time_Str'] = pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
             
@@ -62,7 +62,7 @@ def load_data():
 df, last_log_date = load_data()
 if df.empty: st.stop()
 
-# 3. SIDEBAR
+# 3. SIDEBAR NAVIGATION
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     selected_page = option_menu(menu_title="DATA MODULES", options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], default_index=0)
@@ -86,7 +86,7 @@ if f_country != "All": filt_df = filt_df[filt_df['Country'] == f_country]
 
 st.markdown("---")
 
-# 5. PAGES
+# 5. PAGE LOGIC
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m1, m2, m3, m4 = st.columns(4)
@@ -111,21 +111,22 @@ elif selected_page == "ES-CLOUD TRACKER":
         map_df = filt_df[filt_df['Formatted_Date'] == date_sel]
 
     if not map_df.empty:
-        # Timing Control Slider
+        # Timing Control Slider (Defaults to ALL)
         time_options = ["SHOW ALL"] + sorted(map_df['Time_Str'].dropna().unique().tolist())
         selected_time = hc2.select_slider("Timing Control", options=time_options, value="SHOW ALL")
         
         if selected_time != "SHOW ALL":
-            # Filter for specific time and a 60-minute window
+            # Show a 60-minute window ending at selected time
             sel_dt = pd.to_datetime(selected_time, format='%H:%M')
             win_start = (sel_dt - pd.Timedelta(minutes=60)).strftime('%H:%M')
             render_df = map_df[(map_df['Time_Str'] <= selected_time) & (map_df['Time_Str'] >= win_start)]
         else:
             render_df = map_df
 
-        # 5b. RENDER
+        # MAP RENDER
         layers = []
         if view_mode == "Midpoint Heatmap (Es-Cloud)":
+            # Final data cleanup to avoid NaN crash in Pydeck
             clean_heat = render_df.dropna(subset=['Mid_Lat', 'Mid_Lon'])
             clean_heat = clean_heat[clean_heat['Mid_Lat'] > 0]
             layers.append(pdk.Layer(
@@ -147,7 +148,6 @@ elif selected_page == "ES-CLOUD TRACKER":
             ))
             tooltip_config = {"text": "Logs on this path: {density}"}
 
-        # FINAL RENDER CALL
         st.pydeck_chart(pdk.Deck(
             map_style='mapbox://styles/mapbox/dark-v10',
             initial_view_state=pdk.ViewState(latitude=39, longitude=-98, zoom=3.8, pitch=45),
