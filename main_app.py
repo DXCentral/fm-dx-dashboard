@@ -14,7 +14,7 @@ if 'full_screen' not in st.session_state: st.session_state.full_screen = False
 if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
 
-# "View Full Screen" Logic (Hides Headers/Sidebar)
+# "View Full Screen" Logic
 if st.session_state.full_screen:
     st.markdown("""
         <style>
@@ -28,7 +28,6 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;700&display=swap');
     
-    /* GLOBAL DARK THEME */
     html, body, [class*="st-"] { 
         font-family: 'Oswald', sans-serif !important; 
         background-color: #000000; 
@@ -36,56 +35,59 @@ st.markdown("""
         font-weight: 300; 
     }
 
-    /* KILL ALL BLACK HIGHLIGHTS & FOCUS RINGS ON BUTTONS */
-    div.stButton > button, div.stButton > button:focus, div.stButton > button:active, div.stButton > button:hover {
-        background-color: #D32F2F !important;
-        color: white !important;
+    /* 🛡️ UNIFIED PILL STYLE FOR ALL BUTTONS (Fixes Black Highlight) */
+    div.stButton > button {
+        background-color: #000000 !important;
+        color: #FFFFFF !important;
+        border: 1px solid #444444 !important;
         border-radius: 25px !important;
-        border: none !important;
-        outline: none !important;
+        padding: 8px 25px !important;
+        text-transform: uppercase;
+        font-family: 'Oswald', sans-serif !important;
+        letter-spacing: 1px;
+        transition: all 0.2s ease;
         box-shadow: none !important;
-        text-shadow: none !important;
-        -webkit-tap-highlight-color: transparent !important;
+        outline: none !important;
     }
-    
-    /* ADD HIGHLIGHT RING TO PILLS (Segmented Control) */
+
+    /* Red Hover Effect */
+    div.stButton > button:hover {
+        border-color: #D32F2F !important;
+        color: #D32F2F !important;
+    }
+
+    /* Force Focus/Active to stay Black (Kills the highlight) */
+    div.stButton > button:focus, div.stButton > button:active, div.stButton > button:focus-visible {
+        background-color: #000000 !important;
+        color: #FFFFFF !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
+
+    /* 🔴 RED BORDER FOR SELECTED PILLS */
     div[data-testid="stPills"] button[aria-checked="true"] {
-        border: 2px solid #FFFFFF !important;
-        background-color: #D32F2F !important;
-        color: white !important;
+        border: 2px solid #D32F2F !important;
+        background-color: #000000 !important;
+        color: #FFFFFF !important;
     }
     div[data-testid="stPills"] button {
+        background-color: #000000 !important;
+        border: 1px solid #444444 !important;
         border-radius: 25px !important;
-        font-family: 'Oswald', sans-serif !important;
-        text-transform: uppercase;
-        letter-spacing: 1px;
+        color: #888888 !important;
     }
 
-    h1, h2, h3, h4 { 
-        color: #D32F2F !important; 
-        text-transform: uppercase; 
-        letter-spacing: 3px; 
-    }
-
+    h1, h2, h3, h4 { color: #D32F2F !important; text-transform: uppercase; letter-spacing: 3px; }
     [data-testid="stSidebar"] { background-color: #0A0A0A; border-right: 1px solid #1A1A1A; }
-    
-    /* Metric Styling */
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
 
-    /* Center Container for Reset */
-    .reset-box {
-        display: flex;
-        justify-content: center;
-        width: 100%;
-        margin-top: 15px;
-    }
-
+    .reset-box { display: flex; justify-content: center; width: 100%; margin-top: 15px; }
     .watermark { position: absolute; bottom: 80px; right: 40px; z-index: 1000; pointer-events: none; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. DATA LOADING
+# 2. DATA LOADING (Deduplicated)
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -98,7 +100,7 @@ def load_data():
         df_logs = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`").to_dataframe()
         df_coords = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`").to_dataframe()
         
-        # Robust Join Logic
+        # Join Columns Detection
         l_dx = [c for c in df_logs.columns if 'Concatenated' in c and 'DX' in c][0]
         l_st = [c for c in df_logs.columns if 'Concatenated' in c and 'Station' in c][0]
         c_dx = [c for c in df_coords.columns if 'Concatenated' in c and 'DX' in c][0]
@@ -129,7 +131,7 @@ def load_data():
 df, last_log_date, d_col, dx_lat, dx_lon, st_lat, st_lon = load_data()
 if df.empty: st.stop()
 
-# 3. NAVIGATION
+# 3. SIDEBAR NAVIGATION
 from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
@@ -162,59 +164,52 @@ if not st.session_state.full_screen:
         f_reg = r3c2.selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key="f_reg")
         f_rds = r3c3.selectbox("RDS Decode?", ["All"] + (sorted(df['RDS Decode?'].dropna().unique().astype(str).tolist()) if 'RDS Decode?' in df.columns else []), key="f_rds")
         
-        # Centered Reset Button
         st.markdown('<div class="reset-box">', unsafe_allow_html=True)
         if st.button("RESET ALL FILTERS", key="global_reset"):
-            reset_filters()
-            st.rerun()
+            reset_filters(); st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-
-filt_df = df.copy()
-# (Apply filter mapping logic here...)
 
 # 5. ES-CLOUD TRACKER
 if selected_page == "ES-CLOUD TRACKER":
     if not st.session_state.full_screen:
         st.header("Ionospheric Propagation Analysis")
         view_mode = st.pills("MAP LAYER SELECTION", ["Midpoint Heatmap (Es-Cloud)", "Path Line Analysis (Signal Grid)"], default="Midpoint Heatmap (Es-Cloud)")
+        st.session_state.last_mode = view_mode
     else:
         view_mode = st.session_state.get('last_mode', "Midpoint Heatmap (Es-Cloud)")
 
-    # 🛠️ CONTROLS (PLACED ABOVE MAP)
     hc1, hc2 = st.columns([1, 2])
     with hc1:
         range_enabled = st.checkbox("Enable Date Range Mode", value=True) 
-        avail_days = sorted(filt_df['Date_Obj'].unique())
+        avail_days = sorted(df['Date_Obj'].unique())
         if not range_enabled:
             date_sel = st.date_input("Select Event Date", value=avail_days[-1])
-            map_df = filt_df[filt_df['Date_Obj'] == date_sel]
+            map_df = df[df['Date_Obj'] == date_sel]
         else:
             date_range = st.date_input("Select Date Range", value=(avail_days[0], avail_days[-1]))
-            map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])] if len(date_range) == 2 else filt_df[filt_df['Date_Obj'] == date_range[0]]
+            map_df = df[(df['Date_Obj'] >= date_range[0]) & (df['Date_Obj'] <= date_range[1])] if len(date_range) == 2 else df[df['Date_Obj'] == date_range[0]]
         
         speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "4x": {"delay": 0.01, "step": 4}}
         play_speed = st.selectbox("Playback Speed", options=list(speed_sets.keys()), index=1)
         
         if st.button("📺 VIEW FULL SCREEN" if not st.session_state.full_screen else "❌ EXIT FULL SCREEN"):
-            st.session_state.full_screen = not st.session_state.full_screen
-            st.rerun()
+            st.session_state.full_screen = not st.session_state.full_screen; st.rerun()
 
     if not map_df.empty:
         times = sorted(map_df['Time_Str'].dropna().unique().tolist())
         
-        # PLAYBACK BUTTONS (DIRECTLY ABOVE MAP)
+        # PLAYBACK CONTROLS
         pb1, pb2, pb_txt = st.columns([1, 1, 3])
         if pb1.button("▶ PLAY"): st.session_state.playing = True; st.session_state.p_idx = 0; st.rerun()
         if pb2.button("⏹ STOP"): st.session_state.playing = False; st.rerun()
         
         current_time = times[st.session_state.p_idx] if st.session_state.playing else "SHOW ALL"
-        # Allow slider control when not playing
         if not st.session_state.playing:
             current_time = hc2.select_slider("Time Control", options=["SHOW ALL"] + times, value="SHOW ALL")
             
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
 
-        # 🗺️ THE MAP (1000px Tall, View State for CA-MEX span)
+        # MAP RENDER
         if current_time != "SHOW ALL":
             t_obj = datetime.datetime.strptime(current_time, '%H:%M')
             t_start = (t_obj - datetime.timedelta(minutes=60)).strftime('%H:%M')
@@ -231,15 +226,15 @@ if selected_page == "ES-CLOUD TRACKER":
 
         st.pydeck_chart(pdk.Deck(
             map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-            initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4, pitch=0),
+            initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4),
             layers=layers,
             height=1000 
         ))
 
-        # 🏷️ LOGO WATERMARK
+        # LOGO WATERMARK
         st.markdown("""<div class="watermark"><img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="width: 250px; opacity: 0.4;"></div>""", unsafe_allow_html=True)
         
-        # AUTO-ADVANCE ENGINE
+        # AUTO-ADVANCE
         if st.session_state.playing:
             conf = speed_sets[play_speed]
             if st.session_state.p_idx + conf['step'] < len(times):
@@ -251,4 +246,4 @@ if selected_page == "ES-CLOUD TRACKER":
 
 elif selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
-    # (Restored 7-metric metric row here...)
+    # (Restored Dashboard 7-metric grid)
