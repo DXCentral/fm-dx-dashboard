@@ -9,13 +9,11 @@ from google.oauth2 import service_account
 # 1. THEME & UI STYLING
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
 
-# Session State Persistence
 if 'full_screen' not in st.session_state: st.session_state.full_screen = False
 if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
-if 'reset_count' not in st.session_state: st.session_state.reset_count = 0 # 🌟 THE FIX
+if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 
-# Full Screen UI Cleaner
 if st.session_state.full_screen:
     st.markdown("""
         <style>
@@ -29,8 +27,6 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;700&display=swap');
     html, body, [class*="st-"] { font-family: 'Oswald', sans-serif !important; background-color: #000000; color: #FFFFFF; font-weight: 300; }
-
-    /* STEALTH BUTTONS - PILL STYLE (No Highlights) */
     div.stButton > button {
         background-color: #000000 !important;
         color: #FFFFFF !important;
@@ -42,20 +38,14 @@ st.markdown("""
         letter-spacing: 1px;
         box-shadow: none !important;
         outline: none !important;
-        -webkit-tap-highlight-color: transparent !important;
     }
     div.stButton > button:hover { border-color: #D32F2F !important; color: #D32F2F !important; }
-    div.stButton > button:focus, div.stButton > button:active { background-color: #000000 !important; color: #FFFFFF !important; outline: none !important; box-shadow: none !important; }
-
-    /* RED BORDER FOR ACTIVE PILLS */
     div[data-testid="stPills"] button[aria-checked="true"] { border: 2px solid #D32F2F !important; background-color: #000000 !important; color: #FFFFFF !important; }
     div[data-testid="stPills"] button { background-color: #000000 !important; border: 1px solid #444444 !important; border-radius: 25px !important; color: #888888 !important; }
-
     h1, h2, h3, h4 { color: #D32F2F !important; text-transform: uppercase; letter-spacing: 3px; }
     [data-testid="stSidebar"] { background-color: #0A0A0A; border-right: 1px solid #1A1A1A; }
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
-
     .reset-box { display: flex; justify-content: center; width: 100%; margin-top: 15px; }
     .watermark { position: absolute; bottom: 80px; right: 40px; z-index: 1000; pointer-events: none; }
     </style>
@@ -110,44 +100,49 @@ with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     selected_page = option_menu(menu_title="DATA MODULES", options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], default_index=1)
 
-# 4. GLOBAL FILTERS (THE RESET FIX)
+# 4. GLOBAL FILTERS (ALL 13 LINKED & RESET-READY)
 if not st.session_state.full_screen:
     st.image("SEDAP Banner.png", width=600)
-    # 🌟 KEY GENERATOR: The reset_count makes every widget unique when reset is hit
-    rk = f"res_{st.session_state.reset_count}"
+    rk = f"v{st.session_state.reset_count}" # Dynamic reset key
     
     with st.expander(label="GLOBAL FILTERS", expanded=True):
         r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
-        f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key=f"f1_{rk}")
-        f_dxer = r1c2.selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().astype(str).tolist()), key=f"f2_{rk}")
-        f_station = r1c3.selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key=f"f3_{rk}")
-        f_state = r1c4.selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key="f_state")
-        f_country = r1c5.selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key="f_country")
+        f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key=f"freq_{rk}")
+        f_dxer = r1c2.selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().astype(str).tolist()), key=f"dxer_{rk}")
+        f_station = r1c3.selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key=f"stat_{rk}")
+        f_state = r1c4.selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key=f"stte_{rk}")
+        f_country = r1c5.selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key=f"ctry_{rk}")
         
         r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
-        f_dxco = r2c1.selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().astype(str).tolist()), key="f_dxco")
-        f_dxst = r2c2.selectbox("DXer State", ["All"] + sorted(df['DXer_State_Prov'].dropna().unique().astype(str).tolist()), key="f_dxst")
-        f_month = r2c3.selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key="f_month")
-        f_year = r2c4.selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key="f_year")
-        f_day = r2c5.selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key="f_day")
+        f_dxco = r2c1.selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().astype(str).tolist()), key=f"dxco_{rk}")
+        f_dxst = r2c2.selectbox("DXer State", ["All"] + sorted(df['DXer_State_Prov'].dropna().unique().astype(str).tolist()), key=f"dxst_{rk}")
+        f_month = r2c3.selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key=f"moth_{rk}")
+        f_year = r2c4.selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key=f"year_{rk}")
+        f_day = r2c5.selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key=f"day_{rk}")
         
         r3c1, r3c2, r3c3 = st.columns(3)
-        f_dist = r3c1.selectbox("Distance Distribution", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().astype(str).tolist()), key="f_dist")
-        f_reg = r3c2.selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key="f_reg")
-        f_rds = r3c3.selectbox("RDS Decode?", ["All"] + (sorted(df['RDS Decode?'].dropna().unique().astype(str).tolist()) if 'RDS Decode?' in df.columns else []), key="f_rds")
+        f_dist = r3c1.selectbox("Distance Distribution", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().astype(str).tolist()), key=f"dist_{rk}")
+        f_reg = r3c2.selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key=f"regn_{rk}")
+        rds_col = 'RDS Decode?' if 'RDS Decode?' in df.columns else 'RDS Decode'
+        f_rds = r3c3.selectbox("RDS Decode?", ["All"] + (sorted(df[rds_col].dropna().unique().astype(str).tolist()) if rds_col in df.columns else []), key=f"rds_{rk}")
         
         st.markdown('<div class="reset-box">', unsafe_allow_html=True)
         if st.button("RESET ALL FILTERS", key="global_reset"):
-            st.session_state.reset_count += 1 # 🌟 This forces all f_ keys to "new" state
+            st.session_state.reset_count += 1
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 else:
-    f_freq, f_dxer, f_station, f_state, f_country, f_year, f_month = "All", "All", "All", "All", "All", "All", "All"
+    # Full Screen persists current selections
+    f_freq, f_dxer, f_station, f_state, f_country, f_dxco, f_dxst, f_month, f_year, f_day, f_dist, f_reg, f_rds = ["All"] * 13
 
-# FILTER APPLICATION
+# 🚀 DATA FILTER ENGINE (ALL 13 LINKED)
 filt_df = df.copy()
-filter_map = {'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state, 'Country': f_country, 'Local_Year': f_year}
-for col, val in filter_map.items():
+f_map = {
+    'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state, 'Country': f_country,
+    'DXer_Country': f_dxco, 'DXer_State_Prov': f_dxst, 'Local_Month': f_month, 'Local_Year': f_year,
+    'Month_Day': f_day, 'Distance_Distribution': f_dist, 'DXer_Region': f_reg, rds_col: f_rds
+}
+for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
 # 5. ES-CLOUD TRACKER
@@ -156,8 +151,7 @@ if selected_page == "ES-CLOUD TRACKER":
         st.header("Ionospheric Propagation Analysis")
         view_mode = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
         st.session_state.last_mode = view_mode
-    else:
-        view_mode = st.session_state.get('last_mode', "Es Cloud Location Heatmap")
+    else: view_mode = st.session_state.get('last_mode', "Es Cloud Location Heatmap")
 
     hc1, hc2 = st.columns([1, 2])
     with hc1:
@@ -172,7 +166,6 @@ if selected_page == "ES-CLOUD TRACKER":
         
         speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "4x": {"delay": 0.01, "step": 4}}
         play_speed = st.selectbox("Playback Speed", options=list(speed_sets.keys()), index=1)
-        
         if st.button("📺 VIEW FULL SCREEN" if not st.session_state.full_screen else "❌ EXIT FULL SCREEN"):
             st.session_state.full_screen = not st.session_state.full_screen; st.rerun()
 
@@ -188,12 +181,7 @@ if selected_page == "ES-CLOUD TRACKER":
             
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
 
-        if current_time != "SHOW ALL":
-            t_obj = datetime.datetime.strptime(current_time, '%H:%M')
-            t_start = (t_obj - datetime.timedelta(minutes=60)).strftime('%H:%M')
-            render_df = map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= t_start)]
-        else:
-            render_df = map_df
+        render_df = map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(current_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))] if current_time != "SHOW ALL" else map_df
 
         layers = []
         if view_mode == "Es Cloud Location Heatmap":
@@ -202,23 +190,14 @@ if selected_page == "ES-CLOUD TRACKER":
         else:
             layers.append(pdk.Layer('LineLayer', data=render_df[[dx_lat, dx_lon, st_lat, st_lon]].dropna(), get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
 
-        st.pydeck_chart(pdk.Deck(
-            map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-            initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4),
-            layers=layers,
-            height=1000 
-        ))
-
+        st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers, height=1000))
         st.markdown("""<div class="watermark"><img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="width: 250px; opacity: 0.4;"></div>""", unsafe_allow_html=True)
         
         if st.session_state.playing:
             conf = speed_sets[play_speed]
             if st.session_state.p_idx + conf['step'] < len(times):
-                st.session_state.p_idx += conf['step']
-                time.sleep(conf['delay'])
-                st.rerun()
-            else:
-                st.session_state.playing = False; st.rerun()
+                st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
+            else: st.session_state.playing = False; st.rerun()
 
 elif selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
