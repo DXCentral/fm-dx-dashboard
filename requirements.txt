@@ -8,3 +8,4 @@ pydeck
 pandas
 imageio[ffmpeg]
 Pillow
+opencv-python-headless
