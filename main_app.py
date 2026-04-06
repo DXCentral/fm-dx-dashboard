@@ -20,31 +20,23 @@ st.markdown("""
         font-weight: 300;
     }
 
-    /* KILL STREAMLIT INTERNAL ICON TEXT LEAKS */
-    [data-testid="stSidebarNavSeparator"], 
-    [data-testid="stSidebarCollapseButton"] button div,
+    /* THE ULTIMATE SHIELD: Suppress internal Streamlit code/icon leaks */
+    [data-testid="stSidebarCollapseButton"], 
     [data-testid="stExpanderIcon"],
-    .st-emotion-cache-p5msec { 
+    .st-emotion-cache-p5msec,
+    .st-emotion-cache-1vt4y6f,
+    span[data-testid="stHeaderActionElements"] { 
         display: none !important; 
+        visibility: hidden !important;
     }
 
-    h1, h2, h3, h4 { 
-        color: #D32F2F !important; 
-        font-family: 'Oswald', sans-serif !important;
-        font-weight: 400; 
-        text-transform: uppercase; 
-        letter-spacing: 3px;
-    }
-
-    [data-testid="stSidebar"] {
-        background-color: #0A0A0A;
-        border-right: 1px solid #1A1A1A;
-        min-width: 300px !important;
-        max-width: 350px !important;
-    }
-
+    h1, h2, h3, h4 { color: #D32F2F !important; font-family: 'Oswald', sans-serif !important; letter-spacing: 3px; text-transform: uppercase; }
+    [data-testid="stSidebar"] { background-color: #0A0A0A; border-right: 1px solid #1A1A1A; min-width: 320px !important; }
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
+
+    /* Centered Data Table */
+    [data-testid="stDataFrame"] td { text-align: center !important; }
 
     div.stButton > button {
         background-color: #D32F2F !important;
@@ -52,15 +44,14 @@ st.markdown("""
         border-radius: 4px !important;
         border: none !important;
         padding: 8px 25px !important;
-        font-size: 0.8rem !important;
-        letter-spacing: 2px;
-        text-transform: uppercase;
         font-family: 'Oswald', sans-serif !important;
+        text-transform: uppercase;
+        letter-spacing: 2px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. DATA LOADING (Pulling both tables and Joining)
+# 2. DATA LOADING (Path-Based Join)
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -70,43 +61,32 @@ def load_data():
         credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = bigquery.Client(credentials=credentials, project=credentials.project_id, location="US")
         
-        # Pull Raw Logs
-        log_query = "SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`"
-        df_logs = client.query(log_query).to_dataframe()
+        # 1. Pull Logs
+        df_logs = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`").to_dataframe()
         
-        # Pull Coordinates (The new table from the other tab)
-        coord_query = "SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`"
-        df_coords = client.query(coord_query).to_dataframe()
+        # 2. Pull 7-Column Path Coordinates
+        df_paths = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`").to_dataframe()
         
-        # JOIN LOGIC: Merge Lat/Lon into the logs based on Concatenated Locations
-        # Assuming df_coords has columns: 'Location_Key', 'Lat', 'Lon'
-        # We perform two merges: one for the DXer and one for the Station
-        df = df_logs.copy()
-        
-        # 1. Merge DXer Coordinates
-        df = df.merge(df_coords[['Concatenated_Location', 'Latitude', 'Longitude']], 
-                      left_on='DXer_Concatenated_Location', 
-                      right_on='Concatenated_Location', 
-                      how='left').rename(columns={'Latitude': 'DXer_Lat', 'Longitude': 'DXer_Lon'})
-        
-        # 2. Merge Station Coordinates
-        df = df.merge(df_coords[['Concatenated_Location', 'Latitude', 'Longitude']], 
-                      left_on='Station_Concatenated_Location', 
-                      right_on='Concatenated_Location', 
-                      how='left', 
-                      suffixes=('', '_st')).rename(columns={'Latitude': 'Station_Lat', 'Longitude': 'Station_Lon'})
+        # 3. JOIN: Match logs to their coordinates using BOTH locations
+        # This ensures the DXer and Station coordinates are locked in correctly
+        df = df_logs.merge(
+            df_paths, 
+            left_on=['DXer_Concatenated_Location', 'Station_Concatenated_Location'], 
+            right_on=['DXer_Concatenated_Location', 'Station_Concatenated_Location'], 
+            how='left'
+        )
 
-        # Clean up Dates/Times
+        # Process Time/Date
         df['Local_Date'] = pd.to_datetime(df['Local_Date']).dt.date
         df['Clean_Time'] = pd.to_datetime(df['Local_Time'], errors='coerce').dt.time
         
-        # Midpoint Processing
-        if 'Mid_Point' in df.columns:
-            df[['Mid_Lat', 'Mid_Lon']] = df['Mid_Point'].str.split(',', expand=True).apply(pd.to_numeric, errors='coerce')
+        # Midpoint Calculation for Heatmap
+        df['Mid_Lat'] = (df['DXer_Latitude'] + df['Station_Lat']) / 2
+        df['Mid_Lon'] = (df['DXer_Longitude'] + df['Station_Long']) / 2
             
         return df, df['Local_Date'].max()
     except Exception as e:
-        st.error(f"System Link Failure: {e}")
+        st.error(f"Link Error: {e}")
         return pd.DataFrame(), "Error"
 
 df, last_log_date = load_data()
@@ -117,32 +97,29 @@ with st.sidebar:
     selected_page = option_menu(
         menu_title="DATA MODULES",
         options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"],
-        icons=["speedometer2", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
+        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
         default_index=0,
         styles={"nav-link-selected": {"background-color": "#D32F2F"}, "nav-link": {"font-size": "13px", "white-space": "nowrap"}}
     )
     st.markdown("---")
     st.caption(f"LOGS THROUGH: {last_log_date}")
 
-# 4. GLOBAL FILTERS (Standard Frame)
+# 4. STATIC HEADER & FILTERS
 st.image("SEDAP Banner.png", width=600)
-# (Your 13-box filter grid goes here...)
+# (Filter Grid remains the same as previous Version 18.0)
 
-# --- FILTER APPLICATION ---
-filt_df = df.copy() 
-# (Apply your filter mapping logic here...)
+# ... (Insert Filter Grid Logic) ...
 
 # 5. ES-CLOUD TRACKER MODULE
 if selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     
-    # MODULE SUB-NAV
-    m_type = st.radio("SELECT DISPLAY MODE", ["Midpoint Heatmap (Es-Cloud)", "Path Line Analysis (Signal Grid)"], horizontal=True)
+    view_mode = st.radio("SELECT MAP LAYER", ["Midpoint Heatmap (Es-Cloud)", "Path Line Analysis (Signal Grid)"], horizontal=True)
     
-    # TIME-LAPSE CONTROLS
-    t1, t2 = st.columns([3, 1])
-    target_date = t1.date_input("Select Event Date", value=last_log_date)
-    day_df = filt_df[filt_df['Local_Date'] == target_date].dropna(subset=['Clean_Time'])
+    # Time-Lapse Controls
+    t_col, b_col = st.columns([3, 1])
+    target_date = t_col.date_input("Event Date", value=last_log_date)
+    day_df = df[df['Local_Date'] == target_date].dropna(subset=['Clean_Time', 'DXer_Latitude'])
     
     if not day_df.empty:
         times = sorted(day_df['Clean_Time'].unique())
@@ -151,7 +128,7 @@ if selected_page == "ES-CLOUD TRACKER":
         selected_time = st.select_slider("Temporal Scrub", options=times, value=times[min(st.session_state.anim_idx, len(times)-1)])
         st.session_state.anim_idx = times.index(selected_time)
         
-        # Player Buttons
+        # Player
         p1, p2, p3 = st.columns([1, 1, 2])
         if p1.button("▶ PLAY"):
             for i in range(st.session_state.anim_idx, len(times)):
@@ -159,30 +136,29 @@ if selected_page == "ES-CLOUD TRACKER":
                 time.sleep(0.05)
                 st.rerun()
         if p2.button("⏹ RESET"): st.session_state.anim_idx = 0; st.rerun()
-        if p3.button("🎥 RECORD (ALPHA)"): st.info("Sequence initialized. Use system screen-capture to record output.")
 
-        # MAP PROCESSING
-        # 60-minute window for "Cloud" persistence
-        window_start = (pd.to_datetime(str(selected_time)) - pd.Timedelta(minutes=60)).time()
+        # Filtering Map Window (45 minute persistence)
+        window_start = (pd.to_datetime(str(selected_time)) - pd.Timedelta(minutes=45)).time()
         map_data = day_df[(day_df['Clean_Time'] <= selected_time) & (day_df['Clean_Time'] >= window_start)]
         
         layers = []
-        if m_type == "Midpoint Heatmap (Es-Cloud)":
+        if view_mode == "Midpoint Heatmap (Es-Cloud)":
             layers.append(pdk.Layer(
                 'HeatmapLayer', data=map_data, get_position='[Mid_Lon, Mid_Lat]',
-                radius_pixels=80, intensity=1, threshold=0.05,
+                radius_pixels=80, intensity=1, threshold=0.03,
                 color_range=[[211, 47, 47, 50], [211, 47, 47, 180], [255, 255, 255, 255]]
             ))
         else:
-            # Path Analysis (3D Arcs)
-            # Grouping by paths to determine line thickness
-            path_counts = map_data.groupby(['DXer_Lat', 'DXer_Lon', 'Station_Lat', 'Station_Lon']).size().reset_index(name='density')
+            # Path Analysis (3D Arc Grid)
+            # Group by path to calculate line thickness (density)
+            path_counts = map_data.groupby(['DXer_Latitude', 'DXer_Longitude', 'Station_Lat', 'Station_Long']).size().reset_index(name='density')
             layers.append(pdk.Layer(
                 'ArcLayer', data=path_counts,
-                get_source_position='[DXer_Lon, DXer_Lat]', get_target_position='[Station_Lon, Station_Lat]',
-                get_width='density * 1.5', # Thicker for high-density paths
-                get_source_color=[211, 47, 47, 160], # Soft Red
-                get_target_color=[255, 255, 255, 160], # White
+                get_source_position='[DXer_Longitude, DXer_Latitude]', 
+                get_target_position='[Station_Long, Station_Lat]',
+                get_width='density * 2',
+                get_source_color=[211, 47, 47, 140],
+                get_target_color=[255, 255, 255, 140],
                 pickable=True
             ))
 
@@ -190,7 +166,9 @@ if selected_page == "ES-CLOUD TRACKER":
             map_style='mapbox://styles/mapbox/dark-v10',
             initial_view_state=pdk.ViewState(latitude=39, longitude=-98, zoom=3.8, pitch=45),
             layers=layers,
-            tooltip={"text": "Logs on this path: {density}" if m_type != "Midpoint Heatmap (Es-Cloud)" else "Concentration detected"}
+            tooltip={"text": "Logs on this path: {density}"} if view_mode != "Midpoint Heatmap (Es-Cloud)" else True
         ))
     else:
-        st.warning("Insufficient data for target parameters.")
+        st.warning("No data found for the selected temporal window.")
+
+# ... (Other Modules) ...
