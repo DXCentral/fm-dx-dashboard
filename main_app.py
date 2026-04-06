@@ -43,7 +43,6 @@ def load_data():
             how='left'
         )
 
-        # Coordinate Logic
         df['DX_Lat'] = pd.to_numeric(df['DXer_Latitude'], errors='coerce')
         df['DX_Lon'] = pd.to_numeric(df['DXer_Longitude'], errors='coerce')
         df['ST_Lat'] = pd.to_numeric(df['Station_Lat'], errors='coerce')
@@ -51,7 +50,6 @@ def load_data():
         df['Mid_Lat'] = (df['DX_Lat'] + df['ST_Lat']) / 2
         df['Mid_Lon'] = (df['DX_Lon'] + df['ST_Lon']) / 2
         
-        # String conversion for Date/Time
         df['Date_Obj'] = pd.to_datetime(df['Local_Date']).dt.date
         df['Time_Str'] = pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
             
@@ -91,11 +89,8 @@ if selected_page == "DASHBOARD OVERVIEW":
     m1.metric("Total Logs", f"{len(filt_df):,}")
     m2.metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
     m3.metric("Total Countries", filt_df['Country'].nunique())
-    
-    # FLEXIBLE DISTANCE COLUMN SEARCH
     dist_field = [c for c in filt_df.columns if 'Distance' in c][0]
-    m4.metric("Furthest Reception", f"{filt_df[dist_field].max():,.0f} mi")
-    
+    m4.metric("Furthest Reception", f"{filt_df[dist_field].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df.head(100), width='stretch', hide_index=True)
 
 # 6. ES-CLOUD TRACKER
@@ -117,9 +112,7 @@ elif selected_page == "ES-CLOUD TRACKER":
         selected_time = hc2.select_slider("Timing Control", options=["SHOW ALL"] + times, value="SHOW ALL")
         
         if selected_time != "SHOW ALL":
-            sel_dt = datetime.datetime.strptime(selected_time, '%H:%M')
-            win_start = (sel_dt - datetime.timedelta(minutes=60)).strftime('%H:%M')
-            render_df = map_df[(map_df['Time_Str'] <= selected_time) & (map_df['Time_Str'] >= win_start)]
+            render_df = map_df[map_df['Time_Str'] == selected_time]
         else:
             render_df = map_df
 
@@ -129,24 +122,24 @@ elif selected_page == "ES-CLOUD TRACKER":
             map_ready = map_ready[map_ready['Mid_Lat'] > 0]
             layers.append(pdk.Layer(
                 'HeatmapLayer', data=map_ready, get_position='[Mid_Lon, Mid_Lat]',
-                radius_pixels=80, intensity=1, threshold=0.03,
+                radius_pixels=80, 
+                intensity=3,       # BOOSTED: Makes East Coast areas "pop" more
+                threshold=0.01,    # LOWERED: Catches faint data clusters
                 color_range=[[211, 47, 47, 50], [211, 47, 47, 180], [255, 255, 255, 255]]
             ))
         else:
-            # PATH ANALYSIS (Line Layer - Faint & Clean)
             map_ready = render_df[['DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon']].dropna()
             map_ready = map_ready[map_ready['DX_Lat'] > 0]
             layers.append(pdk.Layer(
                 'LineLayer', data=map_ready,
                 get_source_position='[DX_Lon, DX_Lat]', get_target_position='[ST_Lon, ST_Lat]',
                 get_width=1,
-                get_color=[211, 47, 47, 40], # Very faint red (40 transparency)
+                get_color=[211, 47, 47, 40],
                 pickable=True
             ))
 
-        # NO MAPBOX KEY NEEDED FOR "DARK_MATTER" STYLE
         st.pydeck_chart(pdk.Deck(
             map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-            initial_view_state=pdk.ViewState(latitude=38, longitude=-95, zoom=3.8, pitch=0 if view_mode == "Path Line Analysis (Signal Grid)" else 45),
+            initial_view_state=pdk.ViewState(latitude=38, longitude=-95, zoom=3.8, pitch=0), # FORCED 2D
             layers=layers
         ))
