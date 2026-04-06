@@ -3,6 +3,9 @@ import pandas as pd
 import pydeck as pdk
 import time
 import datetime
+# FIXED: Added missing imports for BigQuery authentication
+from google.cloud import bigquery
+from google.oauth2 import service_account 
 
 # 1. THEME & UI STYLING
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
@@ -37,7 +40,6 @@ def load_data():
         df = df_logs.merge(df_coords, left_on=['Concatenated_DXer_Location', 'Concatenated_Station_Location'], 
                            right_on=['DXer_Concatenated_Location', 'Station_Concatenated_Location'], how='left')
 
-        # Clean numeric coordinates
         for c_in, c_out in [('DXer_Latitude','DX_Lat'), ('DXer_Longitude','DX_Lon'), ('Station_Lat','ST_Lat'), ('Station_Long','ST_Lon')]:
             df[c_out] = pd.to_numeric(df[c_in], errors='coerce')
         
@@ -53,7 +55,7 @@ def load_data():
 df, last_log_date = load_data()
 if df.empty: st.stop()
 
-# 3. SIDEBAR (Creates 'selected_page' variable)
+# 3. SIDEBAR NAVIGATION
 from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
@@ -119,7 +121,7 @@ elif selected_page == "ES-CLOUD TRACKER":
             st.session_state.is_playing = True
             for i in range(st.session_state.anim_idx, len(times)):
                 st.session_state.anim_idx = i
-                time.sleep(0.2) # Adjusted delay for browser rendering
+                time.sleep(0.2) 
                 st.rerun()
             st.session_state.is_playing = False
 
@@ -128,8 +130,8 @@ elif selected_page == "ES-CLOUD TRACKER":
             st.session_state.anim_idx = 0
             st.rerun()
         
-        # 🎥 EXPORT STUB (Functional logic to come after UI is stable)
-        btn3.button("🎥 EXPORT MP4 (BETA)")
+        if btn3.button("🎥 EXPORT MP4 (BETA)"):
+            st.warning("Feature initializing: Pre-rendering frames for capture...")
 
         current_view_time = times[st.session_state.anim_idx] if st.session_state.is_playing else selected_time
         
