@@ -4,10 +4,11 @@ import pydeck as pdk
 import time
 import datetime
 import plotly.express as px
+import numpy as np
 from google.cloud import bigquery
 from google.oauth2 import service_account 
 
-# 1. THEME & UI STYLING (THE SACRED V2.1 BASE)
+# 1. THEME & UI STYLING
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
 
 if 'full_screen' not in st.session_state: st.session_state.full_screen = False
@@ -15,7 +16,7 @@ if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_state' not in st.session_state: st.session_state.selected_state = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 1100
+if 'map_key' not in st.session_state: st.session_state.map_key = 1200
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -39,14 +40,22 @@ st.markdown("""
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
     .watermark { position: absolute; bottom: 80px; right: 40px; z-index: 1000; pointer-events: none; opacity: 0.4; }
     
-    /* Flyout Intelligence Styling */
     .stat-header { color: #D32F2F; font-size: 0.95rem; font-weight: 400; margin-bottom: 5px; border-bottom: 1px solid #333; letter-spacing: 1px; padding-top: 15px; }
     .stat-val { font-size: 1.3rem; color: #FFF; font-weight: 300; margin-top: 5px;}
-    .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 12px; line-height: 1.2; }
+    .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 8px; line-height: 1.2; }
+    .window-box { border-left: 2px solid #D32F2F; padding-left: 10px; margin-bottom: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. DATA LOADING (RESTORED V2.1)
+# Helper function for Date Averaging
+def get_avg_date(dates_series):
+    if dates_series.empty: return "N/A"
+    # Normalize all dates to year 2024 (leap year for safety) to get average day of year
+    day_of_year = dates_series.dt.dayofyear
+    avg_day = int(day_of_year.mean())
+    return (datetime.datetime(2024, 1, 1) + datetime.timedelta(days=avg_day - 1)).strftime('%b %d')
+
+# 2. DATA LOADING
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -85,12 +94,9 @@ if df.empty: st.stop()
 from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
-    selected_page = option_menu(menu_title="DATA MODULES", 
-        options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], 
-        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
-        default_index=0)
+    selected_page = option_menu(menu_title="DATA MODULES", options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], default_index=0)
 
-# 4. GLOBAL FILTERS (ALL 13 RESTORED)
+# 4. GLOBAL FILTERS
 if not st.session_state.full_screen:
     st.image("SEDAP Banner.png", width=600)
     rk = f"v{st.session_state.reset_count}" 
@@ -108,7 +114,7 @@ if not st.session_state.full_screen:
         f_year = r2[3].selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key=f"year_{rk}")
         f_day = r2[4].selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key=f"day_{rk}")
         r3 = st.columns(3)
-        f_dist = r3[0].selectbox("Distance Distribution", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().astype(str).tolist()), key=f"dist_{rk}")
+        f_dist = r3[0].selectbox("Distance Dist.", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().astype(str).tolist()), key=f"dist_{rk}")
         f_reg = r3[1].selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key=f"regn_{rk}")
         rds_c = 'RDS Decode?' if 'RDS Decode?' in df.columns else 'RDS Decode'
         f_rds = r3[2].selectbox("RDS Decode?", ["All"] + (sorted(df[rds_c].dropna().unique().astype(str).tolist()) if rds_c in df.columns else []), key=f"rds_{rk}")
@@ -121,7 +127,7 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_station, 'State':f_state
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULE 1: DASHBOARD OVERVIEW (METRICS RESTORED)
+# 5. MODULE 1: DASHBOARD OVERVIEW
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
@@ -132,29 +138,23 @@ if selected_page == "DASHBOARD OVERVIEW":
     m5.metric("MX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
     m6.metric("Countries Heard", filt_df['Country'].nunique())
     m7.metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
-    
     st.markdown("### Recent Log Stream")
-    # Tweak Table Headers
     table_df = filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100)
-    st.dataframe(table_df, use_container_width=True, hide_index=True, column_config={
-        "Local_Date": "Date", "Local_Time": "Time", "Frequency": "MHz", d_col: "Distance (mi)"
-    })
+    st.dataframe(table_df, use_container_width=True, hide_index=True, column_config={"Frequency": "MHz", d_col: "Distance (mi)"})
 
 # 6. MODULE 2: ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
-    if not st.session_state.full_screen:
-        st.header("Ionospheric Propagation Analysis")
-        view_mode = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
-    else: view_mode = st.session_state.get('last_mode', "Es Cloud Location Heatmap")
+    st.header("Ionospheric Propagation Analysis")
+    view_mode = st.pills("LAYER", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
     hc1, hc2 = st.columns([1, 2])
     with hc1:
         range_on = st.checkbox("Enable Date Range Mode", value=True) 
         avail_days = sorted(filt_df['Date_Obj'].unique()) 
         if not range_on:
-            date_sel = st.date_input("Select Event Date", value=avail_days[-1])
+            date_sel = st.date_input("Select Date", value=avail_days[-1])
             map_df = filt_df[filt_df['Date_Obj'] == date_sel]
         else:
-            date_range = st.date_input("Select Date Range", value=(avail_days[0], avail_days[-1]))
+            date_range = st.date_input("Select Range", value=(avail_days[0], avail_days[-1]))
             if len(date_range) == 2: map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
             else: map_df = filt_df[filt_df['Date_Obj'] == date_range[0]]
         speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "4x": {"delay": 0.01, "step": 4}}
@@ -229,19 +229,30 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     st.markdown(f'<div class="stat-val">{top_st[1]}</div>', unsafe_allow_html=True)
                     st.markdown(f'<div class="stat-label">{top_st[0]} MHz • {top_st[2]} • {s_of.groupby(["Frequency", "Station", "City"]).size().max()} Logs</div>', unsafe_allow_html=True)
 
-                # SEASONALITY
+                # SEASONALITY & WINDOW
                 st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     m_c, y_c = s_of[mo_col].value_counts(), s_of[yr_col].value_counts()
                     st.markdown(f'<div class="stat-val">{str(m_c.idxmax()).upper()} ({m_c.max()})</div>', unsafe_allow_html=True)
                     st.markdown(f'<div class="stat-val">{y_c.idxmax()} ({y_c.max()})</div>', unsafe_allow_html=True)
 
+                    # Temporal Window Calculations
+                    st.markdown('<div class="window-box">', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-label" style="color:#D32F2F">Signal Transmission (Export)</div>', unsafe_allow_html=True)
+                    of_dates = pd.to_datetime(s_of['Local_Date'])
+                    st.markdown(f'<div class="stat-label">Start: {get_avg_date(of_dates.groupby(s_of["Local_Year"]).min())} | Peak: {get_avg_date(of_dates)} | End: {get_avg_date(of_dates.groupby(s_of["Local_Year"]).max())}</div>', unsafe_allow_html=True)
+                    
+                    st.markdown('<div class="stat-label" style="color:#D32F2F">Local Reception (Import)</div>', unsafe_allow_html=True)
+                    from_dates = pd.to_datetime(s_from['Local_Date'])
+                    st.markdown(f'<div class="stat-label">Start: {get_avg_date(from_dates.groupby(s_from["Local_Year"]).min())} | Peak: {get_avg_date(from_dates)} | End: {get_avg_date(from_dates.groupby(s_from["Local_Year"]).max())}</div>', unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+
                 # FURTHEST
                 st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     f = s_of.sort_values(d_col, ascending=False).iloc[0]
                     st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="stat-label">{f["Station"]} caught by {f["DXer"]} on {f[dt_col]} @ {f[tm_col]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-label">{f["Station"]} by {f["DXer"]} on {f[dt_col]} @ {f[tm_col]}</div>', unsafe_allow_html=True)
 
                 # DXer ACTIVITY
                 st.markdown('<div class="stat-header">LOCAL DXER ACTIVITY</div>', unsafe_allow_html=True)
