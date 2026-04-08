@@ -49,7 +49,7 @@ st.markdown("""
     /* Sleek Report Styling */
     .stat-header { color: #D32F2F; font-size: 1rem; font-weight: 400; margin-bottom: 5px; border-bottom: 1px solid #333; letter-spacing: 1px; }
     .stat-val { font-size: 1.4rem; color: #FFF; font-weight: 300; margin-top: 5px;}
-    .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 15px; }
+    .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 15px; line-height: 1.2; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -172,7 +172,7 @@ if selected_page == "ES-CLOUD TRACKER":
         map_clean = render_df.dropna(subset=['Mid_Lat', 'Mid_Lon', dx_lat, dx_lon, st_lat, st_lon])
         layers = []
         if view_mode == "Es Cloud Location Heatmap":
-            layers.append(pdk.Layer('HeatmapLayer', data=map_clean, get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]))
+            layers.append(pdk.Layer('HeatmapLayer', data=map_clean, get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, threshold=0.03, color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]))
         else:
             layers.append(pdk.Layer('LineLayer', data=map_clean, get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
         st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers, height=1000))
@@ -190,7 +190,7 @@ elif selected_page == "DASHBOARD OVERVIEW":
     m4.metric("CA Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
     m5.metric("MX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
     m6.metric("Countries", filt_df['Country'].nunique())
-    m7.metric("Max Distance", f"{filt_df[d_col].max():,.0f} mi")
+    m7.metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df.head(100), width=1500, hide_index=True)
 
 elif selected_page == "GEOGRAPHIC RADIUS":
@@ -199,12 +199,22 @@ elif selected_page == "GEOGRAPHIC RADIUS":
     st.markdown("---")
     
     if geo_selection == "US States":
-        dxer_st_col = [c for c in filt_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)][0]
-        mo_col = [c for c in filt_df.columns if 'Local' in c and 'Month' in c and 'Name' in c][0]
-        yr_col = [c for c in filt_df.columns if 'Local' in c and 'Year' in c][0]
+        # Identify Columns Safely for underscored names
+        dxer_st_col = 'DXer_State_Prov' if 'DXer_State_Prov' in filt_df.columns else 'DXer State/Prov'
+        mo_col = 'Local_Month_Name' if 'Local_Month_Name' in filt_df.columns else 'Local Month Name'
+        yr_col = 'Local_Year' if 'Local_Year' in filt_df.columns else 'Local Year'
+        dt_col = 'Local_Date' if 'Local_Date' in filt_df.columns else 'Local Date'
+        tm_col = 'Local_Time' if 'Local_Time' in filt_df.columns else 'Local Time'
         
-        # COLUMN LAYOUT: Map (Large) | Stats (Sidebar-feel)
-        layout_map, layout_stats = st.columns([3, 1])
+        # Instruction Banner Above Map
+        if not st.session_state.selected_state:
+            st.info("💡 **INTERACTIVE MODE:** Click a state on the map below to fly out detailed reception intelligence.")
+        
+        # DYNAMIC LAYOUT: 100% width if nothing selected, 75/25 if selected
+        if st.session_state.selected_state: layout_cols = [3, 1]
+        else: layout_cols = [1, 0.01] # 0.01 effectively hides the second col
+            
+        layout_map, layout_stats = st.columns(layout_cols)
         
         with layout_map:
             us_data = filt_df[filt_df['Country'] == 'USA']
@@ -212,7 +222,6 @@ elif selected_page == "GEOGRAPHIC RADIUS":
                 state_counts = us_data.groupby('State').size().reset_index(name='Log Count')
                 glow_scale = [[0.0, 'rgb(100, 0, 0)'], [0.2, 'rgb(183, 28, 28)'], [0.5, 'rgb(211, 47, 47)'], [0.8, 'rgb(255, 69, 0)'], [1.0, 'rgb(255, 165, 0)']]
                 
-                # Dynamic Key forces reset on "Clear"
                 fig = px.choropleth(state_counts, locations='State', locationmode="USA-states", color='Log Count', scope="usa", color_continuous_scale=glow_scale, template="plotly_dark")
                 fig.update_traces(marker_line_color='rgb(60, 60, 60)', marker_line_width=0.8)
                 fig.update_layout(geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black', showlakes=True), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin={"r":0,"t":0,"l":0,"b":0}, height=700)
@@ -220,12 +229,13 @@ elif selected_page == "GEOGRAPHIC RADIUS":
                 select_event = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"us_map_{st.session_state.map_key}")
                 if select_event and select_event.get("selection") and select_event["selection"].get("points"):
                     st.session_state.selected_state = select_event["selection"]["points"][0]["location"]
+                    st.rerun()
 
-        with layout_stats:
-            if st.session_state.selected_state:
+        if st.session_state.selected_state:
+            with layout_stats:
                 sel = st.session_state.selected_state
                 st.markdown(f"### {sel} INTEL")
-                if st.button("❌ CLEAR SELECTION", use_container_width=True): 
+                if st.button("❌ CLEAR MAP SELECTION", use_container_width=True): 
                     st.session_state.selected_state = None
                     st.session_state.map_key += 1 # Force map reset
                     st.rerun()
@@ -240,7 +250,7 @@ elif selected_page == "GEOGRAPHIC RADIUS":
                     st.markdown(f'<div class="stat-val">{top_st[1]}</div>', unsafe_allow_html=True)
                     st.markdown(f'<div class="stat-label">{top_st[0]} MHz • {top_st[2]} • {s_of_df.groupby(["Frequency", "Station", "City"]).size().max()} Logs</div>', unsafe_allow_html=True)
 
-                # PEAK SEASONALITY (Month + Year with counts)
+                # PEAK SEASONALITY
                 st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
                 if not s_of_df.empty:
                     m_counts = s_of_df[mo_col].value_counts()
@@ -261,12 +271,10 @@ elif selected_page == "GEOGRAPHIC RADIUS":
                 if not s_of_df.empty:
                     furthest = s_of_df.sort_values(d_col, ascending=False).iloc[0]
                     st.markdown(f'<div class="stat-val">{furthest[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="stat-label">{furthest["Station"]} caught by {furthest["DXer"]} on {furthest["Local Date"]} @ {furthest["Local Time"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-label">{furthest["Station"]} caught by {furthest["DXer"]} on {furthest[dt_col]} @ {furthest[tm_col]}</div>', unsafe_allow_html=True)
 
                 # TOP 5
                 st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
                 if not s_of_df.empty:
                     top5 = s_of_df.groupby(['Frequency', 'Station']).size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(5)
                     st.dataframe(top5, column_config={"Logs": st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(top5['Logs'].max()))}, hide_index=True, use_container_width=True)
-            else:
-                st.info("💡 Click a state on the map to view domestic intelligence.")
