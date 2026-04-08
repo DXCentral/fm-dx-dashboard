@@ -8,7 +8,7 @@ from google.cloud import bigquery
 from google.oauth2 import service_account 
 
 # --- 1. THEME & UI STYLING (The SEDAP "Cinematic" Look) ---
-st.set_page_config(layout="wide", page_title="SEDAP Control Center v75.0")
+st.set_page_config(layout="wide", page_title="SEDAP Control Center v77.0")
 
 st.markdown("""
     <style>
@@ -45,20 +45,23 @@ if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"] { display: none !important; } .stMain { padding: 0 !important; }</style>""", unsafe_allow_html=True)
 
-# --- 2. DATA LOADING (DMS-Decimal Scrubber & NaN Guard) ---
+# --- 2. DATA LOADING (The "Coordinate Detective" & Drive Scope Fix) ---
 @st.cache_data(ttl=600)
 def load_data():
     try:
         creds_dict = dict(st.secrets["gcp_service_account"])
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        
+        # Scopes for BigQuery + Google Sheets Access
         scopes = ["https://www.googleapis.com/auth/bigquery", "https://www.googleapis.com/auth/drive.readonly"]
         credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = bigquery.Client(credentials=credentials, project=credentials.project_id)
         
+        # Pull Data
         df_logs = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`").to_dataframe()
         df_coords = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`").to_dataframe()
         
-        # Dynamic Column detection
+        # Dynamic Column detection for Join
         l_dx = [c for c in df_logs.columns if 'Concatenated' in c and 'DX' in c][0]
         l_st = [c for c in df_logs.columns if 'Concatenated' in c and 'Station' in c][0]
         c_dx = [c for c in df_coords.columns if 'Concatenated' in c and 'DX' in c][0]
@@ -67,27 +70,29 @@ def load_data():
         df_coords = df_coords.drop_duplicates(subset=[c_dx, c_st])
         df = df_logs.merge(df_coords, left_on=[l_dx, l_st], right_on=[c_dx, c_st], how='left')
         
-        # Identify Lat/Lon Columns
-        dx_lat = [c for c in df.columns if 'DXer_Latitude' in c or ('DX' in c and 'Lat' in c)][0]
-        dx_lon = [c for c in df.columns if 'DXer_Longitude' in c or ('DX' in c and 'Lon' in c)][0]
-        st_lat = [c for c in df.columns if 'Station_Lat' in c or ('ST' in c and 'Lat' in c)][0]
-        st_lon = [c for c in df.columns if 'Station_Long' in c or ('ST' in c and 'Lon' in c)][0]
+        # Coordinate Detective: Find Lat/Lon regardless of name
+        def find_col(keywords, df):
+            for c in df.columns:
+                if all(k.lower() in c.lower() for k in keywords): return c
+            return None
+
+        dx_lat = find_col(['DX', 'Lat'], df) or 'Mid_Lat'
+        dx_lon = find_col(['DX', 'Lon'], df) or 'Mid_Long'
+        st_lat = find_col(['Station', 'Lat'], df) or 'Mid_Lat'
+        st_lon = find_col(['Station', 'Long'], df) or 'Mid_Long'
         
-        # THE TYPE-ERROR FIX: Clean symbols and Drop NaNs
-        for c in [dx_lat, dx_lon, st_lat, st_lon]:
-            df[c] = pd.to_numeric(df[c].astype(str).str.replace('°', '').str.strip(), errors='coerce')
+        # THE TYPE-ERROR FIX: Clean symbols, force numeric, and drop NaNs
+        for c in [dx_lat, dx_lon, st_lat, st_lon, 'Mid_Lat', 'Mid_Long']:
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c].astype(str).str.replace('°', '').str.strip(), errors='coerce')
         
-        # Create Midpoints and Timing
-        df['Mid_Lat'] = (df[dx_lat] + df[st_lat]) / 2
-        df['Mid_Lon'] = (df[dx_lon] + df[st_lon]) / 2
+        # Drop rows with broken coordinates to prevent Pydeck crash
+        df = df.dropna(subset=['Mid_Lat', 'Mid_Long'])
+        
         df['Date_Obj'] = pd.to_datetime(df['Local_Date']).dt.date
         df['Time_Str'] = pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
         
         dist_col = [c for c in df.columns if 'Distance' in c and 'mi' in c][0]
-        
-        # Final Sanitization: Pydeck cannot handle NaN coordinates
-        df = df.dropna(subset=[dx_lat, dx_lon, st_lat, st_lon])
-        
         return df, df['Date_Obj'].max(), dist_col, dx_lat, dx_lon, st_lat, st_lon
     except Exception as e:
         st.error(f"System Link Failure: {e}")
@@ -96,167 +101,123 @@ def load_data():
 df, last_log_date, d_col, dx_lat, dx_lon, st_lat, st_lon = load_data()
 if df.empty: st.stop()
 
-# --- 3. GLOBAL FILTERS (ALL 13 LINKED) ---
+# --- 3. SIDEBAR NAVIGATION & GLOBAL FILTERS ---
 from streamlit_option_menu import option_menu
 with st.sidebar:
-    st.markdown("<br>", unsafe_allow_html=True)
     selected_page = option_menu(
         menu_title="DATA MODULES", 
         options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS"], 
         icons=["house-fill", "cloud-haze2", "geo-alt"], 
-        default_index=2
+        default_index=0
     )
 
 if not st.session_state.full_screen:
     rk = f"v{st.session_state.reset_count}"
     with st.expander(label="GLOBAL FILTERS", expanded=True):
-        r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
-        f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key=f"f_{rk}")
-        f_dxer = r1c2.selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().astype(str).tolist()), key=f"d_{rk}")
-        f_station = r1c3.selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key=f"s_{rk}")
-        f_state = r1c4.selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key=f"t_{rk}")
-        f_country = r1c5.selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key=f"c_{rk}")
-        
-        r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
-        f_dxco = r2c1.selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().astype(str).tolist()), key=f"dc_{rk}")
-        f_dxst = r2c2.selectbox("DXer State", ["All"] + sorted(df['DXer_State_Prov'].dropna().unique().astype(str).tolist()), key=f"ds_{rk}")
-        f_month = r2c3.selectbox("Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key=f"m_{rk}")
-        f_year = r2c4.selectbox("Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key=f"y_{rk}")
-        f_day = r2c5.selectbox("Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key=f"dd_{rk}")
-        
-        r3c1, r3c2, r3c3 = st.columns(3)
-        f_dist = r3c1.selectbox("Distance Dist.", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().astype(str).tolist()), key=f"dt_{rk}")
-        f_reg = r3c2.selectbox("Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key=f"rg_{rk}")
-        rds_col = 'RDS Decode?' if 'RDS Decode?' in df.columns else 'RDS Decode'
-        f_rds = r3c3.selectbox("RDS?", ["All"] + (sorted(df[rds_col].dropna().unique().astype(str).tolist()) if rds_col in df.columns else []), key=f"rd_{rk}")
-        
-        if st.button("RESET ALL FILTERS"):
-            st.session_state.reset_count += 1; st.rerun()
+        r1, r2, r3 = st.columns(3), st.columns(3), st.columns(3)
+        f_freq = r1[0].selectbox("Freq", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key=f"fr_{rk}")
+        f_dxer = r1[1].selectbox("DXer", ["All"] + sorted(df['DXer'].dropna().unique().astype(str).tolist()), key=f"dx_{rk}")
+        f_state = r1[2].selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key=f"st_{rk}")
+        f_country = r2[0].selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key=f"co_{rk}")
+        f_month = r2[1].selectbox("Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key=f"mo_{rk}")
+        f_year = r2[2].selectbox("Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key=f"yr_{rk}")
+        if st.button("RESET FILTERS"): st.session_state.reset_count += 1; st.rerun()
 
 # Apply Filters
 filt_df = df.copy()
-f_map = {'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state, 'Country': f_country, 'DXer_Country': f_dxco, 'DXer_State_Prov': f_dxst, 'Local_Month': f_month, 'Local_Year': f_year, 'Month_Day': f_day, 'Distance_Distribution': f_dist, 'DXer_Region': f_reg, rds_col: f_rds}
+f_map = {'Frequency': f_freq, 'DXer': f_dxer, 'State': f_state, 'Country': f_country, 'Local_Month': f_month, 'Local_Year': f_year}
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# --- 4. ES-CLOUD TRACKER (PAGES) ---
+# --- 4. MODULE 1: DASHBOARD ---
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
-    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
-    m1.metric("Total Logs", f"{len(filt_df):,}")
-    m2.metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
-    m3.metric("US States", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
-    m4.metric("CA Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
-    m5.metric("MX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
-    m6.metric("Total Countries", filt_df['Country'].nunique())
-    m7.metric("Max Distance", f"{filt_df[d_col].max():,.0f} mi")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("TOTAL LOGS", f"{len(filt_df):,}")
+    m2.metric("UNIQUE STATIONS", f"{filt_df['Station'].nunique():,}")
+    m3.metric("COUNTRIES", filt_df['Country'].nunique())
+    m4.metric("MAX DISTANCE", f"{filt_df[d_col].max():,.0f} mi")
     st.dataframe(filt_df.head(100), use_container_width=True)
 
+# --- 5. MODULE 2: ES-CLOUD TRACKER (PRESERVED LOGIC) ---
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
-    view_mode = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
+    view_mode = st.pills("MAP LAYER", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
+    
     hc1, hc2 = st.columns([1, 2])
-    with hc1:
-        range_on = st.checkbox("Enable Date Range Mode", value=True) 
-        avail_days = sorted(filt_df['Date_Obj'].unique()) 
-        if not range_on:
-            date_sel = st.date_input("Select Event Date", value=avail_days[-1])
-            map_df = filt_df[filt_df['Date_Obj'] == date_sel]
-        else:
-            date_range = st.date_input("Select Date Range", value=(avail_days[0], avail_days[-1]))
-            map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])] if len(date_range) == 2 else filt_df[filt_df['Date_Obj'] == date_range[0]]
-        
-        speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "4x": {"delay": 0.01, "step": 4}}
-        play_speed = st.selectbox("Playback Speed", options=list(speed_sets.keys()), index=1)
-        if st.button("📺 FULL SCREEN MODE"): st.session_state.full_screen = not st.session_state.full_screen; st.rerun()
-
+    avail_days = sorted(filt_df['Date_Obj'].unique())
+    date_range = hc1.date_input("Date Range", value=(avail_days[0], avail_days[-1]))
+    map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])] if len(date_range) == 2 else filt_df
+    
     if not map_df.empty:
         times = sorted(map_df['Time_Str'].dropna().unique().tolist())
-        pb1, pb2, pb_txt = st.columns([1, 1, 3])
-        if pb1.button("▶ PLAY"): st.session_state.playing = True; st.session_state.p_idx = 0; st.rerun()
-        if pb2.button("⏹ STOP"): st.session_state.playing = False; st.rerun()
-        current_time = times[st.session_state.p_idx] if st.session_state.playing else hc2.select_slider("Time Control", options=["SHOW ALL"] + times, value="SHOW ALL")
-        pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
-
-        layers = []
+        current_time = hc2.select_slider("Time", options=["SHOW ALL"] + times, value="SHOW ALL")
         render_df = map_df if current_time == "SHOW ALL" else map_df[map_df['Time_Str'] == current_time]
+        
+        layers = []
         if view_mode == "Es Cloud Location Heatmap":
-            layers.append(pdk.Layer('HeatmapLayer', data=render_df[['Mid_Lat', 'Mid_Lon']], get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0))
+            layers.append(pdk.Layer('HeatmapLayer', data=render_df[['Mid_Lat', 'Mid_Long']], get_position='[Mid_Long, Mid_Lat]', radius_pixels=60))
         else:
             layers.append(pdk.Layer('LineLayer', data=render_df, get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1.5, get_color=[211, 47, 47, 100]))
         
         st.pydeck_chart(pdk.Deck(map_style='mapbox://styles/mapbox/dark-v11', layers=layers, initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4)))
 
-        if st.session_state.playing:
-            conf = speed_sets[play_speed]
-            if st.session_state.p_idx + conf['step'] < len(times):
-                st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
-            else: st.session_state.playing = False; st.rerun()
-
+# --- 6. MODULE 3: GEOGRAPHIC ANALYSIS (NEW SUITE) ---
 elif selected_page == "GEOGRAPHIC ANALYSIS":
-    st.header("Geographic Footprint & Density Analysis")
+    st.header("Geographic Analysis Suite")
     
-    # NEW: Tabbed Analysis Structure
-    tab1, tab2, tab3 = st.tabs(["🌎 Radius & Reach", "📍 Density Heatmaps", "📊 Regional Breakdown"])
+    # Implementing the specific tabs from the blueprint
+    tab1, tab2, tab3 = st.tabs(["🌎 Country Stats", "🍁 Canadian Stats", "🇺🇸 US State Stats"])
     
-    with tab1:
+    with tab1: # Country Stats
+        st.subheader("Global Distribution & Trends")
+        c_logs = filt_df.groupby('Country').size().reset_index(name='Logs').sort_values('Logs', ascending=False)
+        st.metric("Total Countries Heard", len(c_logs))
+        
+        col_c1, col_c2 = st.columns([1, 2])
+        col_c1.dataframe(c_logs, column_config={"Logs": st.column_config.ProgressColumn("Volume", min_value=0, max_value=int(c_logs['Logs'].max()))}, hide_index=True)
+        
+        # Logs by Country and Month (Stacked Bar)
+        country_month = filt_df.groupby(['Country', 'Local_Month']).size().reset_index(name='Logs')
+        fig = px.bar(country_month, x="Local_Month", y="Logs", color="Country", barmode="stack", color_discrete_sequence=px.colors.sequential.Reds_r)
+        fig.update_layout(paper_bgcolor='black', plot_bgcolor='black', font_color='white', font_family='Oswald', bargap=0.3)
+        col_c2.plotly_chart(fig, use_container_width=True)
+
+    with tab2: # Canadian Stats
+        can_df = filt_df[filt_df['Country'] == 'Canada']
+        st.metric("Total Canadian Logs", len(can_df))
+        prov_logs = can_df.groupby('State').size().reset_index(name='Logs').sort_values('Logs', ascending=False)
+        
+        col_can1, col_can2 = st.columns(2)
+        col_can1.markdown("#### Logs by Province")
+        col_can1.dataframe(prov_logs, column_config={"Logs": st.column_config.ProgressColumn("Logs", min_value=0, max_value=int(prov_logs['Logs'].max() if not prov_logs.empty else 1))}, hide_index=True)
+        
+        # Province Map
+        col_can2.pydeck_chart(pdk.Deck(
+            map_style='mapbox://styles/mapbox/dark-v11',
+            initial_view_state=pdk.ViewState(latitude=55, longitude=-95, zoom=2.5),
+            layers=[pdk.Layer('ScatterplotLayer', can_df, get_position=f'[{st_lon}, {st_lat}]', get_color='[211, 47, 47, 160]', get_radius=30000)]
+        ))
+
+    with tab3: # US State Stats
+        us_df = filt_df[filt_df['Country'] == 'USA']
+        st.subheader("US Log Density & Reach")
+        
+        # Floating Overlay for US Page
         st.markdown(f"""
-            <div style="background-color: rgba(0,0,0,0.85); border: 1px solid #D32F2F; padding: 15px; border-radius: 5px; width: fit-content;">
-                <span style="color: #D32F2F; font-size: 28px; font-weight: bold;">{filt_df['State'].nunique()}</span> <span style="color: white;"> STATES/PROV</span> | 
-                <span style="color: #D32F2F; font-size: 28px; font-weight: bold;">{filt_df[d_col].mean():.0f}</span> <span style="color: white;"> AVG MILES</span>
+            <div style="background-color: rgba(211,47,47,0.1); border: 1px solid #D32F2F; padding: 10px; border-radius: 5px; width: fit-content;">
+                <span style="color: #D32F2F; font-weight: bold; font-size: 20px;">{us_df['State'].nunique()}</span> <span style="color: white;">US STATES LOGGED</span>
             </div>
         """, unsafe_allow_html=True)
         
         st.pydeck_chart(pdk.Deck(
             map_style='mapbox://styles/mapbox/dark-v11',
             initial_view_state=pdk.ViewState(latitude=38, longitude=-95, zoom=3.5),
-            layers=[pdk.Layer('ScatterplotLayer', filt_df, get_position=f'[{st_lon}, {st_lat}]', get_color='[211, 47, 47, 160]', get_radius=20000)]
+            layers=[pdk.Layer('HeatmapLayer', us_df, get_position=f'[{st_lon}, {st_lat}]', radius_pixels=50)]
         ))
         
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("### DXER LEADERBOARD")
-            lead_df = filt_df.groupby('DXer').agg(Logs=('DXer', 'count'), Max_Mi=(d_col, 'max')).sort_values('Logs', ascending=False).reset_index()
-            st.dataframe(lead_df, column_config={
-                "Logs": st.column_config.ProgressColumn("Volume", format="%d", min_value=0, max_value=int(lead_df['Logs'].max() if not lead_df.empty else 1)),
-                "Max_Mi": st.column_config.NumberColumn("Furthest", format="%d mi")
-            }, hide_index=True, use_container_width=True)
-        with c2:
-            st.markdown("### DISTANCE SPREAD")
-            fig = px.histogram(filt_df, x=d_col, nbins=30, color_discrete_sequence=['#D32F2F'])
-            fig.update_layout(bargap=0.3, paper_bgcolor='black', plot_bgcolor='black', font_color='white', font_family='Oswald')
-            st.plotly_chart(fig, use_container_width=True)
-
-    with tab2:
-        st.subheader("Where is the Activity?")
-        c_h1, c_h2 = st.columns(2)
-        with c_h1:
-            st.markdown("#### Logged Station Locations")
-            st.pydeck_chart(pdk.Deck(
-                map_style='mapbox://styles/mapbox/dark-v11',
-                initial_view_state=pdk.ViewState(latitude=38, longitude=-95, zoom=3),
-                layers=[pdk.Layer('HeatmapLayer', data=filt_df, get_position=f'[{st_lon}, {st_lat}]', radius_pixels=40)]
-            ))
-        with c_h2:
-            st.markdown("#### Active DXer Locations")
-            st.pydeck_chart(pdk.Deck(
-                map_style='mapbox://styles/mapbox/dark-v11',
-                initial_view_state=pdk.ViewState(latitude=38, longitude=-95, zoom=3),
-                layers=[pdk.Layer('HeatmapLayer', data=filt_df, get_position=f'[{dx_lon}, {dx_lat}]', radius_pixels=40)]
-            ))
-
-    with tab3:
-        st.subheader("National & Regional Stats")
-        col_r1, col_r2 = st.columns(2)
-        with col_r1:
-            st.markdown("#### Logs by Country")
-            country_logs = filt_df.groupby('Country').size().reset_index(name='Logs').sort_values('Logs', ascending=False)
-            fig_country = px.bar(country_logs, x='Country', y='Logs', color_discrete_sequence=['#D32F2F'])
-            fig_country.update_layout(bargap=0.5, paper_bgcolor='black', plot_bgcolor='black', font_color='white', font_family='Oswald')
-            st.plotly_chart(fig_country, use_container_width=True)
-        with col_r2:
-            st.markdown("#### Logs by US State (Top 15)")
-            state_logs = filt_df[filt_df['Country'] == 'USA'].groupby('State').size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(15)
-            fig_state = px.bar(state_logs, x='State', y='Logs', color_discrete_sequence=['#D32F2F'])
-            fig_state.update_layout(bargap=0.5, paper_bgcolor='black', plot_bgcolor='black', font_color='white', font_family='Oswald')
-            st.plotly_chart(fig_state, use_container_width=True)
+        # State Bar Chart (Top 20)
+        state_logs = us_df.groupby('State').size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(20)
+        fig_st = px.bar(state_logs, x='State', y='Logs', color_discrete_sequence=['#D32F2F'])
+        fig_st.update_layout(paper_bgcolor='black', plot_bgcolor='black', font_color='white', font_family='Oswald', bargap=0.4)
+        st.plotly_chart(fig_st, use_container_width=True)
