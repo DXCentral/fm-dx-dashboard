@@ -15,7 +15,7 @@ if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_state' not in st.session_state: st.session_state.selected_state = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 1000
+if 'map_key' not in st.session_state: st.session_state.map_key = 1100
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -88,7 +88,7 @@ with st.sidebar:
     selected_page = option_menu(menu_title="DATA MODULES", 
         options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], 
         icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
-        default_index=1)
+        default_index=0)
 
 # 4. GLOBAL FILTERS (ALL 13 RESTORED)
 if not st.session_state.full_screen:
@@ -121,12 +121,30 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_station, 'State':f_state
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULE 2: ES-CLOUD TRACKER (INDESTRUCTIBLE FIX)
-if selected_page == "ES-CLOUD TRACKER":
+# 5. MODULE 1: DASHBOARD OVERVIEW (METRICS RESTORED)
+if selected_page == "DASHBOARD OVERVIEW":
+    st.header("Operational Overview")
+    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
+    m1.metric("Total Logs", f"{len(filt_df):,}")
+    m2.metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
+    m3.metric("US States Heard", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
+    m4.metric("CA Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
+    m5.metric("MX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
+    m6.metric("Countries Heard", filt_df['Country'].nunique())
+    m7.metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
+    
+    st.markdown("### Recent Log Stream")
+    # Tweak Table Headers
+    table_df = filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100)
+    st.dataframe(table_df, use_container_width=True, hide_index=True, column_config={
+        "Local_Date": "Date", "Local_Time": "Time", "Frequency": "MHz", d_col: "Distance (mi)"
+    })
+
+# 6. MODULE 2: ES-CLOUD TRACKER
+elif selected_page == "ES-CLOUD TRACKER":
     if not st.session_state.full_screen:
         st.header("Ionospheric Propagation Analysis")
         view_mode = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
-        st.session_state.last_mode = view_mode
     else: view_mode = st.session_state.get('last_mode', "Es Cloud Location Heatmap")
     hc1, hc2 = st.columns([1, 2])
     with hc1:
@@ -151,7 +169,6 @@ if selected_page == "ES-CLOUD TRACKER":
         current_time = times[st.session_state.p_idx] if st.session_state.playing else hc2.select_slider("Time", options=["SHOW ALL"] + times, value="SHOW ALL")
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
         render_df = map_df if current_time == "SHOW ALL" else map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(current_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))]
-
         layers = []
         if view_mode == "Es Cloud Location Heatmap":
             layers.append(pdk.Layer('HeatmapLayer', data=render_df[['Mid_Lat', 'Mid_Lon']].dropna(), get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, threshold=0.03, color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]))
@@ -164,7 +181,7 @@ if selected_page == "ES-CLOUD TRACKER":
             if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
-# 6. MODULE 3: GEOGRAPHIC ANALYSIS (UNIFIED LAYOUT)
+# 7. MODULE 3: GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     geo_view = st.pills("MODULE", options=["Country Stats", "Canadian Stats", "Mexican Stats", "US States", "Distance Stats"], default="US States")
@@ -178,12 +195,10 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
         dt_col = next((c for c in filt_df.columns if 'Local' in c and 'Date' in c), 'Local_Date')
         tm_col = next((c for c in filt_df.columns if 'Local' in c and 'Time' in c), 'Local_Time')
         
-        # UNIFIED LAYOUT: No double maps
         if not st.session_state.selected_state:
             st.info("💡 **INTERACTIVE MODE:** Click a state on the map below to fly out Path Intelligence.")
-            col_map, col_stats = st.columns([1, 0.001]) # Effectively 100% width
-        else:
-            col_map, col_stats = st.columns([3, 1]) # 75 / 25 width
+            col_map, col_stats = st.columns([1, 0.001])
+        else: col_map, col_stats = st.columns([3, 1])
         
         with col_map:
             us_data = filt_df[filt_df['Country'] == 'USA']
@@ -245,9 +260,3 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 if not s_of.empty:
                     t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                     st.dataframe(t5, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
-
-elif selected_page == "DASHBOARD OVERVIEW":
-    st.header("Operational Overview")
-    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
-    m1.metric("Total Logs", f"{len(filt_df):,}"); m2.metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
-    st.dataframe(filt_df.head(100), width=1500, hide_index=True)
