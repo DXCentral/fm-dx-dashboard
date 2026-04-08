@@ -77,8 +77,9 @@ def load_data():
         st_lat = [c for c in df.columns if 'Station_Lat' in c or ('ST' in c and 'Lat' in c)][0]
         st_lon = [c for c in df.columns if 'Station_Long' in c or ('ST' in c and 'Lon' in c)][0]
         
+        # Scrub Coordinates to prevent TypeErrors
         for c in [dx_lat, dx_lon, st_lat, st_lon]:
-            df[c] = pd.to_numeric(df[c], errors='coerce').astype('float32')
+            df[c] = pd.to_numeric(df[c].astype(str).str.replace('°', '').str.strip(), errors='coerce').astype('float32')
             
         df['Mid_Lat'] = (df[dx_lat] + df[st_lat]) / 2
         df['Mid_Lon'] = (df[dx_lon] + df[st_lon]) / 2
@@ -98,12 +99,21 @@ if df.empty: st.stop()
 from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
-    selected_page = option_menu(menu_title="DATA MODULES", options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], default_index=1)
+    selected_page = option_menu(
+        menu_title="DATA MODULES", 
+        options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], 
+        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
+        default_index=1
+    )
 
-# 4. GLOBAL FILTERS (ALL 13 LINKED & RESET-READY)
+# 4. GLOBAL FILTERS
 if not st.session_state.full_screen:
-    st.image("SEDAP Banner.png", width=600)
-    rk = f"v{st.session_state.reset_count}" # Dynamic reset key
+    try:
+        st.image("SEDAP Banner.png", width=600)
+    except:
+        st.markdown("<h1 style='color: #D32F2F;'>SEDAP</h1>", unsafe_allow_html=True)
+        
+    rk = f"v{st.session_state.reset_count}"
     
     with st.expander(label="GLOBAL FILTERS", expanded=True):
         r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
@@ -132,10 +142,9 @@ if not st.session_state.full_screen:
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 else:
-    # Full Screen persists current selections
     f_freq, f_dxer, f_station, f_state, f_country, f_dxco, f_dxst, f_month, f_year, f_day, f_dist, f_reg, f_rds = ["All"] * 13
 
-# 🚀 DATA FILTER ENGINE (ALL 13 LINKED)
+# 🚀 DATA FILTER ENGINE
 filt_df = df.copy()
 f_map = {
     'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state, 'Country': f_country,
@@ -145,7 +154,7 @@ f_map = {
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. ES-CLOUD TRACKER
+# 5. PAGE LOGIC
 if selected_page == "ES-CLOUD TRACKER":
     if not st.session_state.full_screen:
         st.header("Ionospheric Propagation Analysis")
@@ -178,17 +187,17 @@ if selected_page == "ES-CLOUD TRACKER":
         current_time = times[st.session_state.p_idx] if st.session_state.playing else "SHOW ALL"
         if not st.session_state.playing:
             current_time = hc2.select_slider("Time Control", options=["SHOW ALL"] + times, value="SHOW ALL")
-            
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
 
         render_df = map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(current_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))] if current_time != "SHOW ALL" else map_df
+        map_clean = render_df.dropna(subset=['Mid_Lat', 'Mid_Lon', dx_lat, dx_lon, st_lat, st_lon])
 
         layers = []
         if view_mode == "Es Cloud Location Heatmap":
-            layers.append(pdk.Layer('HeatmapLayer', data=render_df[['Mid_Lat', 'Mid_Lon']].dropna(), get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, threshold=0.03,
+            layers.append(pdk.Layer('HeatmapLayer', data=map_clean, get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, threshold=0.03,
                                    color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]))
         else:
-            layers.append(pdk.Layer('LineLayer', data=render_df[[dx_lat, dx_lon, st_lat, st_lon]].dropna(), get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
+            layers.append(pdk.Layer('LineLayer', data=map_clean, get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
 
         st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers, height=1000))
         st.markdown("""<div class="watermark"><img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="width: 250px; opacity: 0.4;"></div>""", unsafe_allow_html=True)
@@ -209,6 +218,32 @@ elif selected_page == "DASHBOARD OVERVIEW":
     m5.metric("MX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
     m6.metric("Total Countries", filt_df['Country'].nunique())
     m7.metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
-    st.dataframe(filt_df.head(100), width='stretch', hide_index=True)
+    st.dataframe(filt_df.head(100), width=1500, hide_index=True)
 
-
+elif selected_page == "GEOGRAPHIC ANALYSIS":
+    st.header("Geographic Analysis Suite")
+    
+    geo_sections = ["Country Stats", "Canadian Stats", "Mexican Stats", "US States", "Distance Stats"]
+    geo_view = st.pills("SELECT ANALYSIS VIEW", geo_sections, default="US States")
+    
+    st.markdown("---")
+    
+    if geo_view == "Country Stats":
+        st.subheader("🌎 International Insights (Excl. NA Big Three)")
+        st.info("Visuals coming soon: International log density and country leaderboards.")
+        
+    elif geo_view == "Canadian Stats":
+        st.subheader("🍁 Canada Propagation Profile")
+        st.info("Visuals coming soon: Province density maps and leaderboard.")
+        
+    elif geo_view == "Mexican Stats":
+        st.subheader("🇲🇽 Mexico Propagation Profile")
+        st.info("Visuals coming soon: Mexico state density and reception patterns.")
+        
+    elif geo_view == "US States":
+        st.subheader("🇺🇸 US Domestic Reception Analysis")
+        st.info("Visuals coming soon: State-by-state density heatmap and leaderboards.")
+        
+    elif geo_view == "Distance Stats":
+        st.subheader("📏 Propagation Distance Metrics")
+        st.info("Visuals coming soon: Sweet-spot histograms and distance distribution.")
