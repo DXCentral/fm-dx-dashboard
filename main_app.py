@@ -6,7 +6,7 @@ import datetime
 from google.cloud import bigquery
 from google.oauth2 import service_account 
 
-# 1. THEME & UI STYLING
+# 1. THEME & UI STYLING (RESTORED V2.1)
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
 
 if 'full_screen' not in st.session_state: st.session_state.full_screen = False
@@ -82,14 +82,18 @@ def load_data():
             
         df['Mid_Lat'] = (df[dx_lat] + df[st_lat]) / 2
         df['Mid_Lon'] = (df[dx_lon] + df[st_lon]) / 2
+        
+        # FIX: Convert dates to strings to avoid Pydeck JSON serialization error
         df['Date_Obj'] = pd.to_datetime(df['Local_Date']).dt.date
+        df['Date_Str'] = df['Date_Obj'].astype(str) 
+        
         df['Time_Str'] = pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
         
         dist_col = [c for c in df.columns if 'Distance' in c and 'mi' in c][0]
         return df, df['Date_Obj'].max(), dist_col, dx_lat, dx_lon, st_lat, st_lon
     except Exception as e:
         st.error(f"System Link Failure: {e}")
-        return pd.DataFrame(), "Error", "Distance", None, None, None, None
+        return pd.DataFrame(), None, "Distance", None, None, None, None
 
 df, last_log_date, d_col, dx_lat, dx_lon, st_lat, st_lon = load_data()
 if df.empty: st.stop()
@@ -159,7 +163,10 @@ if selected_page == "ES-CLOUD TRACKER":
             map_df = filt_df[filt_df['Date_Obj'] == date_sel]
         else:
             date_range = st.date_input("Select Date Range", value=(avail_days[0], avail_days[-1]))
-            map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])] if len(date_range) == 2 else filt_df[filt_df['Date_Obj'] == date_range[0]]
+            if len(date_range) == 2:
+                map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
+            else:
+                map_df = filt_df[filt_df['Date_Obj'] == date_range[0]]
         
         speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "4x": {"delay": 0.01, "step": 4}}
         play_speed = st.selectbox("Playback Speed", options=list(speed_sets.keys()), index=1)
@@ -179,8 +186,11 @@ if selected_page == "ES-CLOUD TRACKER":
 
         render_df = map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(current_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))] if current_time != "SHOW ALL" else map_df
         
-        # --- THE AIR-GAP FIX: Purify data right before Pydeck sees it ---
-        map_pure = render_df.dropna(subset=['Mid_Lat', 'Mid_Lon', dx_lat, dx_lon, st_lat, st_lon])
+        # --- THE FIX: Clean columns and drop NaNs without breaking Date serialization ---
+        map_cols = ['Mid_Lat', 'Mid_Lon', dx_lat, dx_lon, st_lat, st_lon]
+        map_pure = render_df.dropna(subset=[c for c in map_cols if c in render_df.columns])
+        # Force remove the Python 'date' object from the map data
+        if 'Date_Obj' in map_pure.columns: map_pure = map_pure.drop(columns=['Date_Obj'])
 
         layers = []
         if view_mode == "Es Cloud Location Heatmap":
@@ -215,19 +225,3 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     geo_sections = ["Country Stats", "Canadian Stats", "Mexican Stats", "US States", "Distance Stats"]
     geo_view = st.pills("SELECT ANALYSIS VIEW", geo_sections, default="US States")
     st.markdown("---")
-    
-    if geo_view == "Country Stats":
-        st.subheader("🌎 International Insights (Excl. NA Big Three)")
-        st.info("Structure locked. Awaiting visual design.")
-    elif geo_view == "Canadian Stats":
-        st.subheader("🍁 Canada Propagation Profile")
-        st.info("Structure locked. Awaiting visual design.")
-    elif geo_view == "Mexican Stats":
-        st.subheader("🇲🇽 Mexico Propagation Profile")
-        st.info("Structure locked. Awaiting visual design.")
-    elif geo_view == "US States":
-        st.subheader("🇺🇸 US Domestic Reception Analysis")
-        st.info("Structure locked. Awaiting visual design.")
-    elif geo_view == "Distance Stats":
-        st.subheader("📏 Propagation Distance Metrics")
-        st.info("Structure locked. Awaiting visual design.")
