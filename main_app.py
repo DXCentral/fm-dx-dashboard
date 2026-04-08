@@ -16,7 +16,7 @@ if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_state' not in st.session_state: st.session_state.selected_state = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 1400
+if 'map_key' not in st.session_state: st.session_state.map_key = 1500
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -134,10 +134,10 @@ if selected_page == "DASHBOARD OVERVIEW":
     m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
     m1.metric("Total Logs", f"{len(filt_df):,}")
     m2.metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
-    m3.metric("US States", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
+    m3.metric("US States Heard", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
     m4.metric("CA Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
     m5.metric("MX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
-    m6.metric("Countries", filt_df['Country'].nunique())
+    m6.metric("Countries Heard", filt_df['Country'].nunique())
     m7.metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     
     st.markdown("### Recent Log Stream")
@@ -171,7 +171,7 @@ elif selected_page == "ES-CLOUD TRACKER":
         pb1, pb2, pb_txt = st.columns([1, 1, 3])
         if pb1.button("▶ PLAY"): st.session_state.playing = True; st.session_state.p_idx = 0; st.rerun()
         if pb2.button("⏹ STOP"): st.session_state.playing = False; st.rerun()
-        current_time = times[st.session_state.p_idx] if st.session_state.playing else hc2.select_slider("Time", options=["SHOW ALL"] + times, value="SHOW ALL")
+        current_time = times[st.session_state.p_idx] if st.session_state.playing else hc2.select_slider("Time Control", options=["SHOW ALL"] + times, value="SHOW ALL")
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
         render_df = map_df if current_time == "SHOW ALL" else map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(current_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))]
         layers = []
@@ -259,6 +259,12 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 st.markdown('<div class="stat-header">TOP RECEPTION PATHS</div>', unsafe_allow_html=True)
                 p_in = s_from[s_from['Country'] == 'USA'].groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 if not p_in.empty: st.dataframe(p_in, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
+                
+                st.markdown('<div class="stat-header">TOP INTERNATIONAL REACH</div>', unsafe_allow_html=True)
+                p_intl = s_from[s_from['Country'] != 'USA'].groupby('Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                if not p_intl.empty: st.dataframe(p_intl, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
+                st.markdown(f'<div class="stat-label">Non-US countries heard in {sel}</div>', unsafe_allow_html=True)
+
                 st.markdown('<div class="stat-header">TOP TRANSMISSION PATHS</div>', unsafe_allow_html=True)
                 p_out = s_of[s_of[dx_co_col] == 'USA'].groupby(dx_st_col).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 if not p_out.empty: st.dataframe(p_out, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
