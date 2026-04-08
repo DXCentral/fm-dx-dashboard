@@ -7,7 +7,7 @@ import plotly.express as px
 from google.cloud import bigquery
 from google.oauth2 import service_account 
 
-# 1. THEME & UI STYLING (The SEDAP Cinematic Core)
+# 1. THEME & UI STYLING
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
 
 if 'full_screen' not in st.session_state: st.session_state.full_screen = False
@@ -37,8 +37,6 @@ st.markdown("""
         text-transform: uppercase;
         font-family: 'Oswald', sans-serif !important;
         letter-spacing: 1px;
-        box-shadow: none !important;
-        outline: none !important;
     }
     div.stButton > button:hover { border-color: #D32F2F !important; color: #D32F2F !important; }
     div[data-testid="stPills"] button[aria-checked="true"] { border: 2px solid #D32F2F !important; background-color: #000000 !important; color: #FFFFFF !important; }
@@ -49,6 +47,18 @@ st.markdown("""
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
     .reset-box { display: flex; justify-content: center; width: 100%; margin-top: 15px; }
     .watermark { position: absolute; bottom: 80px; right: 40px; z-index: 1000; pointer-events: none; }
+    
+    /* Fly-out Box Styling */
+    .stat-card {
+        background-color: #0A0A0A;
+        border: 1px solid #333;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 10px;
+    }
+    .stat-header { color: #D32F2F; font-size: 1.2rem; font-weight: 400; margin-bottom: 10px; border-bottom: 1px solid #D32F2F; }
+    .stat-val { font-size: 1.5rem; color: #FFF; font-weight: 300; }
+    .stat-label { font-size: 0.8rem; color: #888; text-transform: uppercase; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -90,7 +100,7 @@ def load_data():
         return df, df['Date_Obj'].max(), dist_col, dx_lat, dx_lon, st_lat, st_lon
     except Exception as e:
         st.error(f"System Link Failure: {e}")
-        return pd.DataFrame(), "Error", "Distance", None, None, None, None
+        return pd.DataFrame(), None, "Distance", None, None, None, None
 
 df, last_log_date, d_col, dx_lat, dx_lon, st_lat, st_lon = load_data()
 if df.empty: st.stop()
@@ -118,14 +128,12 @@ if not st.session_state.full_screen:
         f_station = r1c3.selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key=f"stat_{rk}")
         f_state = r1c4.selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key=f"stte_{rk}")
         f_country = r1c5.selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key=f"ctry_{rk}")
-        
         r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
         f_dxco = r2c1.selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().astype(str).tolist()), key=f"dxco_{rk}")
         f_dxst = r2c2.selectbox("DXer State", ["All"] + sorted(df['DXer_State_Prov'].dropna().unique().astype(str).tolist()), key=f"dxst_{rk}")
         f_month = r2c3.selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key=f"moth_{rk}")
         f_year = r2c4.selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key=f"year_{rk}")
         f_day = r2c5.selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key=f"day_{rk}")
-        
         r3c1, r3c2, r3c3 = st.columns(3)
         f_dist = r3c1.selectbox("Distance Distribution", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().astype(str).tolist()), key=f"dist_{rk}")
         f_reg = r3c2.selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key=f"regn_{rk}")
@@ -142,11 +150,7 @@ else:
 
 # 🚀 DATA FILTER ENGINE
 filt_df = df.copy()
-f_map = {
-    'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state, 'Country': f_country,
-    'DXer_Country': f_dxco, 'DXer_State_Prov': f_dxst, 'Local_Month': f_month, 'Local_Year': f_year,
-    'Month_Day': f_day, 'Distance_Distribution': f_dist, 'DXer_Region': f_reg, rds_col: f_rds
-}
+f_map = {'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state, 'Country': f_country, 'DXer_Country': f_dxco, 'DXer_State_Prov': f_dxst, 'Local_Month': f_month, 'Local_Year': f_year, 'Month_Day': f_day, 'Distance_Distribution': f_dist, 'DXer_Region': f_reg, rds_col: f_rds}
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
@@ -155,7 +159,6 @@ if selected_page == "ES-CLOUD TRACKER":
     if not st.session_state.full_screen:
         st.header("Ionospheric Propagation Analysis")
         view_mode = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
-        st.session_state.last_mode = view_mode
     else: view_mode = st.session_state.get('last_mode', "Es Cloud Location Heatmap")
 
     hc1, hc2 = st.columns([1, 2])
@@ -179,22 +182,20 @@ if selected_page == "ES-CLOUD TRACKER":
         pb1, pb2, pb_txt = st.columns([1, 1, 3])
         if pb1.button("▶ PLAY"): st.session_state.playing = True; st.session_state.p_idx = 0; st.rerun()
         if pb2.button("⏹ STOP"): st.session_state.playing = False; st.rerun()
-        
         current_time = times[st.session_state.p_idx] if st.session_state.playing else "SHOW ALL"
         if not st.session_state.playing:
             current_time = hc2.select_slider("Time Control", options=["SHOW ALL"] + times, value="SHOW ALL")
-            
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
 
         render_df = map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(current_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))] if current_time != "SHOW ALL" else map_df
+        map_clean = render_df.dropna(subset=['Mid_Lat', 'Mid_Lon', dx_lat, dx_lon, st_lat, st_lon])
 
         layers = []
         if view_mode == "Es Cloud Location Heatmap":
-            layers.append(pdk.Layer('HeatmapLayer', data=render_df[['Mid_Lat', 'Mid_Lon']].dropna(), get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, threshold=0.03,
+            layers.append(pdk.Layer('HeatmapLayer', data=map_clean, get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, threshold=0.03,
                                    color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]))
         else:
-            layers.append(pdk.Layer('LineLayer', data=render_df[[dx_lat, dx_lon, st_lat, st_lon]].dropna(), get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
-
+            layers.append(pdk.Layer('LineLayer', data=map_clean, get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
         st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers, height=1000))
         st.markdown("""<div class="watermark"><img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="width: 250px; opacity: 0.4;"></div>""", unsafe_allow_html=True)
         
@@ -218,66 +219,82 @@ elif selected_page == "DASHBOARD OVERVIEW":
 
 elif selected_page == "GEOGRAPHIC RADIUS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
-    
-    geo_sections = ["Country Stats", "Canadian Stats", "Mexican Stats", "US States", "Distance Stats"]
-    geo_selection = st.pills("SELECT ANALYSIS MODULE", options=geo_sections, default="US States")
-    
+    geo_selection = st.pills("SELECT ANALYSIS MODULE", options=["Country Stats", "Canadian Stats", "Mexican Stats", "US States", "Distance Stats"], default="US States")
     st.markdown("---")
     
     if geo_selection == "US States":
-        st.subheader("🇺🇸 US Domestic Log Density")
-        
         us_data = filt_df[filt_df['Country'] == 'USA']
-        
         if not us_data.empty:
             state_counts = us_data.groupby('State').size().reset_index(name='Log Count')
+            glow_scale = [[0.0, 'rgb(100, 0, 0)'], [0.2, 'rgb(183, 28, 28)'], [0.5, 'rgb(211, 47, 47)'], [0.8, 'rgb(255, 69, 0)'], [1.0, 'rgb(255, 165, 0)']]
             
-            # TWEAKED COLOR SCALE: Deep Maroon -> Signal Red -> Neon Orange/Yellow
-            # This avoids pure white so high-volume states don't look "empty".
-            glow_scale = [
-                [0.0, 'rgb(100, 0, 0)'],     # Dark Maroon
-                [0.2, 'rgb(183, 28, 28)'],   # Tracker Low
-                [0.5, 'rgb(211, 47, 47)'],   # Signal Red
-                [0.8, 'rgb(255, 69, 0)'],    # Orange-Red
-                [1.0, 'rgb(255, 165, 0)']    # Bright Neon Orange (Peak)
-            ]
-            
-            fig = px.choropleth(
-                state_counts,
-                locations='State',
-                locationmode="USA-states",
-                color='Log Count',
-                scope="usa",
-                color_continuous_scale=glow_scale,
-                template="plotly_dark"
-            )
-            
-            # Added marker_line (borders) to define the states clearly
+            fig = px.choropleth(state_counts, locations='State', locationmode="USA-states", color='Log Count', scope="usa", color_continuous_scale=glow_scale, template="plotly_dark")
             fig.update_traces(marker_line_color='rgb(60, 60, 60)', marker_line_width=0.8)
+            fig.update_layout(geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black', showlakes=True), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin={"r":0,"t":0,"l":0,"b":0}, height=600)
             
-            fig.update_layout(
-                geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black', showlakes=True),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                margin={"r":0,"t":40,"l":0,"b":0},
-                height=700,
-                coloraxis_colorbar=dict(title="Log Volume", thickness=15, len=0.5)
-            )
+            # CAPTURE CLICK EVENT
+            select_event = st.plotly_chart(fig, use_container_width=True, on_select="rerun")
             
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.warning("No US logs match the current global filter criteria.")
-    
-    # Other sections remain empty placeholders for now
-    elif geo_selection == "Country Stats":
-        st.subheader("🌎 International Insights")
-        st.info("Module Active. Awaiting design.")
-    elif geo_selection == "Canadian Stats":
-        st.subheader("🍁 Canada Profile")
-        st.info("Module Active. Awaiting design.")
-    elif geo_selection == "Mexican Stats":
-        st.subheader("🇲🇽 Mexico Profile")
-        st.info("Module Active. Awaiting design.")
-    elif geo_selection == "Distance Stats":
-        st.subheader("📏 Distance Metrics")
-        st.info("Module Active. Awaiting design.")
+            if select_event and select_event.get("selection") and select_event["selection"].get("points"):
+                selected_state = select_event["selection"]["points"][0]["location"]
+                
+                # DATA SLICING FOR THE FLY-OUT
+                s_of_df = us_data[us_data['State'] == selected_state] # Logs OF this state
+                s_from_df = filt_df[filt_df['DXer State/Prov'] == selected_state] # Logs FROM this state
+                
+                st.markdown(f"### 📋 STATE INTELLIGENCE REPORT: {selected_state}")
+                
+                c1, c2, c3 = st.columns(3)
+                
+                # --- COLUMN 1: TRANSMISSION STATS (OF THIS STATE) ---
+                with c1:
+                    st.markdown('<div class="stat-card">', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-header">MOST HEARD STATION</div>', unsafe_allow_html=True)
+                    if not s_of_df.empty:
+                        top_st = s_of_df.groupby(['Frequency', 'Station', 'City']).size().idxmax()
+                        st.markdown(f'<div class="stat-val">{top_st[1]}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-label">{top_st[0]} MHz • {top_st[2]} • {s_of_df.groupby(["Frequency", "Station", "City"]).size().max()} Logs</div>', unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+                    st.markdown('<div class="stat-card">', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
+                    if not s_of_df.empty:
+                        top_mo = s_of_df['Local Month Name'].value_counts().idxmax()
+                        st.markdown(f'<div class="stat-val">{top_mo.upper()}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-label">Month with highest log volume</div>', unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+                # --- COLUMN 2: RECEPTION STATS (FROM THIS STATE) ---
+                with c2:
+                    st.markdown('<div class="stat-card">', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-header">LOCAL DXER ACTIVITY</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{s_from_df["DXer"].nunique()} UNIQUE DXERS</div>', unsafe_allow_html=True)
+                    if not s_from_df.empty:
+                        common_st = s_from_df[s_from_df['Country'] == 'USA']['State'].value_counts().idxmax()
+                        st.markdown(f'<div class="stat-label">Favoring: {common_st} logs</div>', unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+                    st.markdown('<div class="stat-card">', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
+                    if not s_of_df.empty:
+                        furthest = s_of_df.sort_values(d_col, ascending=False).iloc[0]
+                        st.markdown(f'<div class="stat-val">{furthest[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-label">{furthest["Station"]} caught by {furthest["DXer"]}</div>', unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+                # --- COLUMN 3: LEADERBOARD (OF THIS STATE) ---
+                with c3:
+                    st.markdown('<div class="stat-card">', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-header">TOP 5 STATIONS HEARD</div>', unsafe_allow_html=True)
+                    if not s_of_df.empty:
+                        top5 = s_of_df.groupby(['Frequency', 'Station', 'City']).size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(5)
+                        st.dataframe(top5, column_config={"Logs": st.column_config.ProgressColumn("Logs", format="%d", min_value=0, max_value=int(top5['Logs'].max()))}, hide_index=True, use_container_width=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.info("💡 Click a state on the map to view detailed reception and transmission intelligence.")
+
+    # Other Module Placeholders
+    elif geo_selection == "Country Stats": st.subheader("🌎 International Insights"); st.info("Module Active.")
+    elif geo_selection == "Canadian Stats": st.subheader("🍁 Canada Profile"); st.info("Module Active.")
+    elif geo_selection == "Mexican Stats": st.subheader("🇲🇽 Mexico Profile"); st.info("Module Active.")
+    elif geo_selection == "Distance Stats": st.subheader("📏 Distance Metrics"); st.info("Module Active.")
