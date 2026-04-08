@@ -7,7 +7,7 @@ import plotly.express as px
 from google.cloud import bigquery
 from google.oauth2 import service_account 
 
-# 1. THEME & UI STYLING (The Cinematic Core)
+# 1. THEME & UI STYLING (The SEDAP Cinematic Core)
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
 
 if 'full_screen' not in st.session_state: st.session_state.full_screen = False
@@ -227,36 +227,34 @@ elif selected_page == "GEOGRAPHIC RADIUS":
     if geo_selection == "US States":
         st.subheader("🇺🇸 US Domestic Log Density")
         
-        # 1. Filter for US Logs only
         us_data = filt_df[filt_df['Country'] == 'USA']
         
         if not us_data.empty:
-            # 2. Count logs per state
             state_counts = us_data.groupby('State').size().reset_index(name='Log Count')
             
-            # 3. Define Heatmap Color Scale (Tracker Consistent)
-            # [183, 28, 28] -> #B71C1C (Low)
-            # [255, 255, 255] -> #FFFFFF (High)
-            tracker_scale = [
-                [0.0, 'rgb(183, 28, 28)'], 
-                [0.25, 'rgb(211, 47, 47)'], 
-                [0.5, 'rgb(244, 67, 54)'], 
-                [0.75, 'rgb(255, 235, 238)'], 
-                [1.0, 'rgb(255, 255, 255)']
+            # TWEAKED COLOR SCALE: Deep Maroon -> Signal Red -> Neon Orange/Yellow
+            # This avoids pure white so high-volume states don't look "empty".
+            glow_scale = [
+                [0.0, 'rgb(100, 0, 0)'],     # Dark Maroon
+                [0.2, 'rgb(183, 28, 28)'],   # Tracker Low
+                [0.5, 'rgb(211, 47, 47)'],   # Signal Red
+                [0.8, 'rgb(255, 69, 0)'],    # Orange-Red
+                [1.0, 'rgb(255, 165, 0)']    # Bright Neon Orange (Peak)
             ]
             
-            # 4. Build the Choropleth
             fig = px.choropleth(
                 state_counts,
                 locations='State',
                 locationmode="USA-states",
                 color='Log Count',
                 scope="usa",
-                color_continuous_scale=tracker_scale,
+                color_continuous_scale=glow_scale,
                 template="plotly_dark"
             )
             
-            # 5. Aesthetic Polishing (No Gray, Stealth Black)
+            # Added marker_line (borders) to define the states clearly
+            fig.update_traces(marker_line_color='rgb(60, 60, 60)', marker_line_width=0.8)
+            
             fig.update_layout(
                 geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black', showlakes=True),
                 paper_bgcolor='rgba(0,0,0,0)',
@@ -269,19 +267,17 @@ elif selected_page == "GEOGRAPHIC RADIUS":
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.warning("No US logs match the current global filter criteria.")
-        
+    
+    # Other sections remain empty placeholders for now
     elif geo_selection == "Country Stats":
-        st.subheader("🌎 International Insights (Excl. NA Big Three)")
-        st.info("Awaiting design instructions for this module.")
-        
+        st.subheader("🌎 International Insights")
+        st.info("Module Active. Awaiting design.")
     elif geo_selection == "Canadian Stats":
-        st.subheader("🍁 Canada Propagation Profile")
-        st.info("Awaiting design instructions for this module.")
-        
+        st.subheader("🍁 Canada Profile")
+        st.info("Module Active. Awaiting design.")
     elif geo_selection == "Mexican Stats":
-        st.subheader("🇲🇽 Mexico Propagation Profile")
-        st.info("Awaiting design instructions for this module.")
-        
+        st.subheader("🇲🇽 Mexico Profile")
+        st.info("Module Active. Awaiting design.")
     elif geo_selection == "Distance Stats":
-        st.subheader("📏 Propagation Distance Metrics")
-        st.info("Awaiting design instructions for this module.")
+        st.subheader("📏 Distance Metrics")
+        st.info("Module Active. Awaiting design.")
