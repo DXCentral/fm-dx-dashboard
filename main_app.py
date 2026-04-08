@@ -14,6 +14,7 @@ if 'full_screen' not in st.session_state: st.session_state.full_screen = False
 if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
+if 'selected_state' not in st.session_state: st.session_state.selected_state = None
 
 if st.session_state.full_screen:
     st.markdown("""
@@ -139,12 +140,9 @@ if not st.session_state.full_screen:
         f_reg = r3c2.selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key=f"regn_{rk}")
         rds_col = 'RDS Decode?' if 'RDS Decode?' in df.columns else 'RDS Decode'
         f_rds = r3c3.selectbox("RDS Decode?", ["All"] + (sorted(df[rds_col].dropna().unique().astype(str).tolist()) if rds_col in df.columns else []), key=f"rds_{rk}")
-        
-        st.markdown('<div class="reset-box">', unsafe_allow_html=True)
         if st.button("RESET ALL FILTERS", key="global_reset"):
             st.session_state.reset_count += 1
             st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
 else:
     f_freq, f_dxer, f_station, f_state, f_country, f_dxco, f_dxst, f_month, f_year, f_day, f_dist, f_reg, f_rds = ["All"] * 13
 
@@ -192,8 +190,7 @@ if selected_page == "ES-CLOUD TRACKER":
 
         layers = []
         if view_mode == "Es Cloud Location Heatmap":
-            layers.append(pdk.Layer('HeatmapLayer', data=map_clean, get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, threshold=0.03,
-                                   color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]))
+            layers.append(pdk.Layer('HeatmapLayer', data=map_clean, get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, threshold=0.03, color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]))
         else:
             layers.append(pdk.Layer('LineLayer', data=map_clean, get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
         st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers, height=1000))
@@ -223,6 +220,10 @@ elif selected_page == "GEOGRAPHIC RADIUS":
     st.markdown("---")
     
     if geo_selection == "US States":
+        # Identify Columns Safely
+        dxer_st_col = [c for c in filt_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)][0]
+        mo_col = [c for c in filt_df.columns if 'Local' in c and 'Month' in c and 'Name' in c][0]
+        
         us_data = filt_df[filt_df['Country'] == 'USA']
         if not us_data.empty:
             state_counts = us_data.groupby('State').size().reset_index(name='Log Count')
@@ -232,21 +233,24 @@ elif selected_page == "GEOGRAPHIC RADIUS":
             fig.update_traces(marker_line_color='rgb(60, 60, 60)', marker_line_width=0.8)
             fig.update_layout(geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black', showlakes=True), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin={"r":0,"t":0,"l":0,"b":0}, height=600)
             
-            # CAPTURE CLICK EVENT
+            # Map with Selection logic
             select_event = st.plotly_chart(fig, use_container_width=True, on_select="rerun")
             
             if select_event and select_event.get("selection") and select_event["selection"].get("points"):
-                selected_state = select_event["selection"]["points"][0]["location"]
+                st.session_state.selected_state = select_event["selection"]["points"][0]["location"]
+
+            if st.session_state.selected_state:
+                sel = st.session_state.selected_state
+                if st.button("❌ CLEAR SELECTION"): 
+                    st.session_state.selected_state = None
+                    st.rerun()
+
+                s_of_df = us_data[us_data['State'] == sel]
+                s_from_df = filt_df[filt_df[dxer_st_col] == sel]
                 
-                # DATA SLICING FOR THE FLY-OUT
-                s_of_df = us_data[us_data['State'] == selected_state] # Logs OF this state
-                s_from_df = filt_df[filt_df['DXer State/Prov'] == selected_state] # Logs FROM this state
-                
-                st.markdown(f"### 📋 STATE INTELLIGENCE REPORT: {selected_state}")
-                
+                st.markdown(f"### 📋 STATE INTELLIGENCE REPORT: {sel}")
                 c1, c2, c3 = st.columns(3)
                 
-                # --- COLUMN 1: TRANSMISSION STATS (OF THIS STATE) ---
                 with c1:
                     st.markdown('<div class="stat-card">', unsafe_allow_html=True)
                     st.markdown('<div class="stat-header">MOST HEARD STATION</div>', unsafe_allow_html=True)
@@ -259,19 +263,17 @@ elif selected_page == "GEOGRAPHIC RADIUS":
                     st.markdown('<div class="stat-card">', unsafe_allow_html=True)
                     st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
                     if not s_of_df.empty:
-                        top_mo = s_of_df['Local Month Name'].value_counts().idxmax()
-                        st.markdown(f'<div class="stat-val">{top_mo.upper()}</div>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="stat-label">Month with highest log volume</div>', unsafe_allow_html=True)
+                        top_mo = s_of_df[mo_col].value_counts().idxmax()
+                        st.markdown(f'<div class="stat-val">{str(top_mo).upper()}</div>', unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
 
-                # --- COLUMN 2: RECEPTION STATS (FROM THIS STATE) ---
                 with c2:
                     st.markdown('<div class="stat-card">', unsafe_allow_html=True)
                     st.markdown('<div class="stat-header">LOCAL DXER ACTIVITY</div>', unsafe_allow_html=True)
                     st.markdown(f'<div class="stat-val">{s_from_df["DXer"].nunique()} UNIQUE DXERS</div>', unsafe_allow_html=True)
                     if not s_from_df.empty:
-                        common_st = s_from_df[s_from_df['Country'] == 'USA']['State'].value_counts().idxmax()
-                        st.markdown(f'<div class="stat-label">Favoring: {common_st} logs</div>', unsafe_allow_html=True)
+                        fav_target = s_from_df[s_from_df['Country'] == 'USA']['State'].value_counts()
+                        if not fav_target.empty: st.markdown(f'<div class="stat-label">Favoring: {fav_target.idxmax()}</div>', unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
 
                     st.markdown('<div class="stat-card">', unsafe_allow_html=True)
@@ -282,7 +284,6 @@ elif selected_page == "GEOGRAPHIC RADIUS":
                         st.markdown(f'<div class="stat-label">{furthest["Station"]} caught by {furthest["DXer"]}</div>', unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
 
-                # --- COLUMN 3: LEADERBOARD (OF THIS STATE) ---
                 with c3:
                     st.markdown('<div class="stat-card">', unsafe_allow_html=True)
                     st.markdown('<div class="stat-header">TOP 5 STATIONS HEARD</div>', unsafe_allow_html=True)
@@ -292,9 +293,3 @@ elif selected_page == "GEOGRAPHIC RADIUS":
                     st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.info("💡 Click a state on the map to view detailed reception and transmission intelligence.")
-
-    # Other Module Placeholders
-    elif geo_selection == "Country Stats": st.subheader("🌎 International Insights"); st.info("Module Active.")
-    elif geo_selection == "Canadian Stats": st.subheader("🍁 Canada Profile"); st.info("Module Active.")
-    elif geo_selection == "Mexican Stats": st.subheader("🇲🇽 Mexico Profile"); st.info("Module Active.")
-    elif geo_selection == "Distance Stats": st.subheader("📏 Distance Metrics"); st.info("Module Active.")
