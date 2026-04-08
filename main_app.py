@@ -17,7 +17,7 @@ if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_state' not in st.session_state: st.session_state.selected_state = None
 if 'selected_prov' not in st.session_state: st.session_state.selected_prov = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 1600
+if 'map_key' not in st.session_state: st.session_state.map_key = 1700
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -142,7 +142,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m7.metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.markdown("### Recent Log Stream")
     table_cols = ['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]
-    st.dataframe(filt_df[table_cols].head(100), use_container_width=True, hide_index=True, column_config={"Local_Date": "Date", "Local_Time": "Time", "Frequency": "MHz", d_col: st.column_config.ProgressColumn("Distance (mi)", format="%d", min_value=0, max_value=int(filt_df[d_col].max() if not filt_df.empty else 3000))})
+    st.dataframe(filt_df[table_cols].head(100), use_container_width=True, hide_index=True, column_config={"Frequency": "MHz", d_col: st.column_config.ProgressColumn("Distance (mi)", format="%d", min_value=0, max_value=int(filt_df[d_col].max() if not filt_df.empty else 3000))})
 
 # 6. MODULE 2: ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
@@ -189,7 +189,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     geo_view = st.pills("MODULE", options=["Country Stats", "Canadian Stats", "Mexican Stats", "US States", "Distance Stats"], default="US States")
     st.markdown("---")
     
-    # Common Column Detective
+    # Column Detective Logic
     dx_st_col = next((c for c in filt_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
     dx_co_col = next((c for c in filt_df.columns if 'DXer' in c and 'Country' in c), 'DXer_Country')
     mo_col = next((c for c in filt_df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name')
@@ -198,7 +198,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     tm_col = next((c for c in filt_df.columns if 'Local' in c and 'Time' in c), 'Local_Time')
     glow_scale = [[0, 'rgb(100,0,0)'], [0.2, 'rgb(183,28,28)'], [0.5, 'rgb(211,47,47)'], [0.8, 'rgb(255,69,0)'], [1, 'rgb(255,165,0)']]
 
-    # 🇺🇸 US STATES SECTION
+    # 🇺🇸 US STATES
     if geo_view == "US States":
         if not st.session_state.selected_state:
             st.info("💡 **INTERACTIVE MODE:** Click a state on the map below to fly out Path Intelligence.")
@@ -257,7 +257,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                     st.dataframe(t5, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
 
-    # 🍁 CANADIAN STATS SECTION
+    # 🍁 CANADIAN STATS
     elif geo_view == "Canadian Stats":
         if not st.session_state.selected_prov:
             st.info("💡 **INTERACTIVE MODE:** Click a province on the map below to fly out Path Intelligence.")
@@ -266,9 +266,10 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
         with col_map:
             ca_data = filt_df[filt_df['Country'] == 'Canada']
             if not ca_data.empty:
+                # Custom Province-Level Map for Canada
                 prov_counts = ca_data.groupby('State').size().reset_index(name='Logs')
-                # Note: 'locations' maps to provincial codes or full names
-                fig = px.choropleth(prov_counts, locations='State', locationmode="country names", color='Logs', scope="north america", color_continuous_scale=glow_scale, template="plotly_dark")
+                # Use sub-region scope to force Plotly to zoom on Canada correctly
+                fig = px.choropleth(prov_counts, locations='State', color='Logs', color_continuous_scale=glow_scale, locationmode="country names", scope="north america", template="plotly_dark")
                 fig.update_geos(fitbounds="locations", visible=False)
                 fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black'), margin={"r":0,"t":0,"l":0,"b":0}, height=700)
                 ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"ca_map_{st.session_state.map_key}")
@@ -301,7 +302,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     f = s_of.sort_values(d_col, ascending=False).iloc[0]
-                    st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div><div class="stat-label">{f["Station"]} caught by {f["DXer"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div><div class="stat-label">{f["Station"]} by {f["DXer"]} on {f[dt_col]} @ {f[tm_col]}</div>', unsafe_allow_html=True)
                 st.markdown('<div class="stat-header">TOP RECEPTION PATHS</div>', unsafe_allow_html=True)
                 p_in = s_from[s_from['Country'].isin(['USA', 'Canada'])].groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 if not p_in.empty: st.dataframe(p_in, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
