@@ -6,7 +6,7 @@ import datetime
 from google.cloud import bigquery
 from google.oauth2 import service_account 
 
-# 1. THEME & UI STYLING (RESTORED V2.1)
+# 1. THEME & UI STYLING
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
 
 if 'full_screen' not in st.session_state: st.session_state.full_screen = False
@@ -78,22 +78,18 @@ def load_data():
         st_lon = [c for c in df.columns if 'Station_Long' in c or ('ST' in c and 'Lon' in c)][0]
         
         for c in [dx_lat, dx_lon, st_lat, st_lon]:
-            df[c] = pd.to_numeric(df[c].astype(str).str.replace('°', '').str.strip(), errors='coerce').astype('float32')
+            df[c] = pd.to_numeric(df[c], errors='coerce').astype('float32')
             
         df['Mid_Lat'] = (df[dx_lat] + df[st_lat]) / 2
         df['Mid_Lon'] = (df[dx_lon] + df[st_lon]) / 2
-        
-        # FIX: Convert dates to strings to avoid Pydeck JSON serialization error
         df['Date_Obj'] = pd.to_datetime(df['Local_Date']).dt.date
-        df['Date_Str'] = df['Date_Obj'].astype(str) 
-        
         df['Time_Str'] = pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
         
         dist_col = [c for c in df.columns if 'Distance' in c and 'mi' in c][0]
         return df, df['Date_Obj'].max(), dist_col, dx_lat, dx_lon, st_lat, st_lon
     except Exception as e:
         st.error(f"System Link Failure: {e}")
-        return pd.DataFrame(), None, "Distance", None, None, None, None
+        return pd.DataFrame(), "Error", "Distance", None, None, None, None
 
 df, last_log_date, d_col, dx_lat, dx_lon, st_lat, st_lon = load_data()
 if df.empty: st.stop()
@@ -102,21 +98,13 @@ if df.empty: st.stop()
 from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
-    selected_page = option_menu(
-        menu_title="DATA MODULES", 
-        options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], 
-        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
-        default_index=1
-    )
+    selected_page = option_menu(menu_title="DATA MODULES", options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], default_index=1)
 
-# 4. GLOBAL FILTERS
+# 4. GLOBAL FILTERS (ALL 13 LINKED & RESET-READY)
 if not st.session_state.full_screen:
-    try:
-        st.image("SEDAP Banner.png", width=600)
-    except:
-        st.markdown("<h1 style='color: #D32F2F;'>SEDAP</h1>", unsafe_allow_html=True)
-        
-    rk = f"v{st.session_state.reset_count}"
+    st.image("SEDAP Banner.png", width=600)
+    rk = f"v{st.session_state.reset_count}" # Dynamic reset key
+    
     with st.expander(label="GLOBAL FILTERS", expanded=True):
         r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
         f_freq = r1c1.selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key=f"freq_{rk}")
@@ -124,34 +112,45 @@ if not st.session_state.full_screen:
         f_station = r1c3.selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key=f"stat_{rk}")
         f_state = r1c4.selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key=f"stte_{rk}")
         f_country = r1c5.selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key=f"ctry_{rk}")
+        
         r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
         f_dxco = r2c1.selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().astype(str).tolist()), key=f"dxco_{rk}")
         f_dxst = r2c2.selectbox("DXer State", ["All"] + sorted(df['DXer_State_Prov'].dropna().unique().astype(str).tolist()), key=f"dxst_{rk}")
         f_month = r2c3.selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key=f"moth_{rk}")
         f_year = r2c4.selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key=f"year_{rk}")
         f_day = r2c5.selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key=f"day_{rk}")
+        
         r3c1, r3c2, r3c3 = st.columns(3)
         f_dist = r3c1.selectbox("Distance Distribution", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().astype(str).tolist()), key=f"dist_{rk}")
         f_reg = r3c2.selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key=f"regn_{rk}")
         rds_col = 'RDS Decode?' if 'RDS Decode?' in df.columns else 'RDS Decode'
         f_rds = r3c3.selectbox("RDS Decode?", ["All"] + (sorted(df[rds_col].dropna().unique().astype(str).tolist()) if rds_col in df.columns else []), key=f"rds_{rk}")
+        
+        st.markdown('<div class="reset-box">', unsafe_allow_html=True)
         if st.button("RESET ALL FILTERS", key="global_reset"):
             st.session_state.reset_count += 1
             st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 else:
+    # Full Screen persists current selections
     f_freq, f_dxer, f_station, f_state, f_country, f_dxco, f_dxst, f_month, f_year, f_day, f_dist, f_reg, f_rds = ["All"] * 13
 
-# 🚀 DATA FILTER ENGINE
+# 🚀 DATA FILTER ENGINE (ALL 13 LINKED)
 filt_df = df.copy()
-f_map = {'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state, 'Country': f_country, 'DXer_Country': f_dxco, 'DXer_State_Prov': f_dxst, 'Local_Month': f_month, 'Local_Year': f_year, 'Month_Day': f_day, 'Distance_Distribution': f_dist, 'DXer_Region': f_reg, rds_col: f_rds}
+f_map = {
+    'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state, 'Country': f_country,
+    'DXer_Country': f_dxco, 'DXer_State_Prov': f_dxst, 'Local_Month': f_month, 'Local_Year': f_year,
+    'Month_Day': f_day, 'Distance_Distribution': f_dist, 'DXer_Region': f_reg, rds_col: f_rds
+}
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. PAGE LOGIC
+# 5. ES-CLOUD TRACKER
 if selected_page == "ES-CLOUD TRACKER":
     if not st.session_state.full_screen:
         st.header("Ionospheric Propagation Analysis")
         view_mode = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
+        st.session_state.last_mode = view_mode
     else: view_mode = st.session_state.get('last_mode', "Es Cloud Location Heatmap")
 
     hc1, hc2 = st.columns([1, 2])
@@ -163,10 +162,7 @@ if selected_page == "ES-CLOUD TRACKER":
             map_df = filt_df[filt_df['Date_Obj'] == date_sel]
         else:
             date_range = st.date_input("Select Date Range", value=(avail_days[0], avail_days[-1]))
-            if len(date_range) == 2:
-                map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
-            else:
-                map_df = filt_df[filt_df['Date_Obj'] == date_range[0]]
+            map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])] if len(date_range) == 2 else filt_df[filt_df['Date_Obj'] == date_range[0]]
         
         speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "4x": {"delay": 0.01, "step": 4}}
         play_speed = st.selectbox("Playback Speed", options=list(speed_sets.keys()), index=1)
@@ -182,22 +178,17 @@ if selected_page == "ES-CLOUD TRACKER":
         current_time = times[st.session_state.p_idx] if st.session_state.playing else "SHOW ALL"
         if not st.session_state.playing:
             current_time = hc2.select_slider("Time Control", options=["SHOW ALL"] + times, value="SHOW ALL")
+            
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
 
         render_df = map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(current_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))] if current_time != "SHOW ALL" else map_df
-        
-        # --- THE FIX: Clean columns and drop NaNs without breaking Date serialization ---
-        map_cols = ['Mid_Lat', 'Mid_Lon', dx_lat, dx_lon, st_lat, st_lon]
-        map_pure = render_df.dropna(subset=[c for c in map_cols if c in render_df.columns])
-        # Force remove the Python 'date' object from the map data
-        if 'Date_Obj' in map_pure.columns: map_pure = map_pure.drop(columns=['Date_Obj'])
 
         layers = []
         if view_mode == "Es Cloud Location Heatmap":
-            layers.append(pdk.Layer('HeatmapLayer', data=map_pure, get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, threshold=0.03,
+            layers.append(pdk.Layer('HeatmapLayer', data=render_df[['Mid_Lat', 'Mid_Lon']].dropna(), get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, threshold=0.03,
                                    color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]))
         else:
-            layers.append(pdk.Layer('LineLayer', data=map_pure, get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
+            layers.append(pdk.Layer('LineLayer', data=render_df[[dx_lat, dx_lon, st_lat, st_lon]].dropna(), get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
 
         st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers, height=1000))
         st.markdown("""<div class="watermark"><img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="width: 250px; opacity: 0.4;"></div>""", unsafe_allow_html=True)
@@ -218,10 +209,6 @@ elif selected_page == "DASHBOARD OVERVIEW":
     m5.metric("MX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
     m6.metric("Total Countries", filt_df['Country'].nunique())
     m7.metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
-    st.dataframe(filt_df.head(100), width=1500, hide_index=True)
+    st.dataframe(filt_df.head(100), width='stretch', hide_index=True)
 
-elif selected_page == "GEOGRAPHIC ANALYSIS":
-    st.header("Geographic Analysis Suite")
-    geo_sections = ["Country Stats", "Canadian Stats", "Mexican Stats", "US States", "Distance Stats"]
-    geo_view = st.pills("SELECT ANALYSIS VIEW", geo_sections, default="US States")
-    st.markdown("---")
+
