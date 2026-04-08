@@ -98,12 +98,17 @@ if df.empty: st.stop()
 from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
-    selected_page = option_menu(menu_title="DATA MODULES", options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], default_index=1)
+    selected_page = option_menu(
+        menu_title="DATA MODULES", 
+        options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC RADIUS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], 
+        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
+        default_index=1
+    )
 
-# 4. GLOBAL FILTERS (ALL 13 LINKED & RESET-READY)
+# 4. GLOBAL FILTERS
 if not st.session_state.full_screen:
     st.image("SEDAP Banner.png", width=600)
-    rk = f"v{st.session_state.reset_count}" # Dynamic reset key
+    rk = f"v{st.session_state.reset_count}"
     
     with st.expander(label="GLOBAL FILTERS", expanded=True):
         r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
@@ -132,10 +137,9 @@ if not st.session_state.full_screen:
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 else:
-    # Full Screen persists current selections
     f_freq, f_dxer, f_station, f_state, f_country, f_dxco, f_dxst, f_month, f_year, f_day, f_dist, f_reg, f_rds = ["All"] * 13
 
-# 🚀 DATA FILTER ENGINE (ALL 13 LINKED)
+# 🚀 DATA FILTER ENGINE
 filt_df = df.copy()
 f_map = {
     'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_station, 'State': f_state, 'Country': f_country,
@@ -145,7 +149,7 @@ f_map = {
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. ES-CLOUD TRACKER
+# 5. PAGE LOGIC
 if selected_page == "ES-CLOUD TRACKER":
     if not st.session_state.full_screen:
         st.header("Ionospheric Propagation Analysis")
@@ -209,6 +213,33 @@ elif selected_page == "DASHBOARD OVERVIEW":
     m5.metric("MX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
     m6.metric("Total Countries", filt_df['Country'].nunique())
     m7.metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
-    st.dataframe(filt_df.head(100), width='stretch', hide_index=True)
+    st.dataframe(filt_df.head(100), width=1500, hide_index=True)
 
-
+elif selected_page == "GEOGRAPHIC RADIUS":
+    st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
+    
+    # 5 SECTION PILLS
+    geo_sections = ["Country Stats", "Canadian Stats", "Mexican Stats", "US States", "Distance Stats"]
+    geo_selection = st.pills("SELECT ANALYSIS MODULE", options=geo_sections, default="US States")
+    
+    st.markdown("---")
+    
+    if geo_selection == "US States":
+        st.subheader("🇺🇸 US State Analysis")
+        st.info("Module Active: US domestic logs filtered. Awaiting design.")
+        
+    elif geo_selection == "Country Stats":
+        st.subheader("🌎 International Stats (Excl. NA Big Three)")
+        st.info("Module Active: Global distribution analysis. Awaiting design.")
+        
+    elif geo_selection == "Canadian Stats":
+        st.subheader("🍁 Canadian Province Stats")
+        st.info("Module Active: Province density analysis. Awaiting design.")
+        
+    elif geo_selection == "Mexican Stats":
+        st.subheader("🇲🇽 Mexican State Stats")
+        st.info("Module Active: Mexico regional breakdown. Awaiting design.")
+        
+    elif geo_selection == "Distance Stats":
+        st.subheader("📏 Distance Distribution Metrics")
+        st.info("Module Active: Signal path mileage analysis. Awaiting design.")
