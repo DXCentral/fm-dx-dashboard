@@ -8,7 +8,7 @@ import numpy as np
 from google.cloud import bigquery
 from google.oauth2 import service_account 
 
-# 1. THEME & UI STYLING
+# 1. THEME & UI STYLING (THE SACRED V2.1 CINEMATIC BASE)
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
 
 if 'full_screen' not in st.session_state: st.session_state.full_screen = False
@@ -17,7 +17,7 @@ if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_state' not in st.session_state: st.session_state.selected_state = None
 if 'selected_prov' not in st.session_state: st.session_state.selected_prov = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 2300
+if 'map_key' not in st.session_state: st.session_state.map_key = 2400
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -42,6 +42,7 @@ st.markdown("""
     .stat-header { color: #D32F2F; font-size: 0.95rem; font-weight: 400; margin-bottom: 5px; border-bottom: 1px solid #333; letter-spacing: 1px; padding-top: 15px; }
     .stat-val { font-size: 1.3rem; color: #FFF; font-weight: 300; margin-top: 5px;}
     .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 8px; line-height: 1.2; }
+    .window-box { border-left: 2px solid #D32F2F; padding-left: 10px; margin-bottom: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -51,7 +52,7 @@ def get_avg_date(dates_series):
     avg_day = int(day_of_year.mean())
     return (datetime.datetime(2024, 1, 1) + datetime.timedelta(days=avg_day - 1)).strftime('%b %d')
 
-# 2. DATA LOADING
+# 2. DATA LOADING (RESTORED DRIVE PERMISSIONS)
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -86,7 +87,7 @@ with st.sidebar:
     selected_page = option_menu("DATA MODULES", ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], 
         icons=["house", "cloud", "geo", "clock", "graph-up", "broadcast", "diagram-3"], default_index=0)
 
-# 4. GLOBAL FILTERS
+# 4. GLOBAL FILTERS (RESTORED ALL 13)
 if not st.session_state.full_screen:
     st.image("SEDAP Banner.png", width=600)
     rk = f"v{st.session_state.reset_count}"
@@ -116,17 +117,17 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_station, 'State':f_state
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. DASHBOARD
+# 5. DASHBOARD OVERVIEW
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
-    m1.metric("Logs", f"{len(filt_df):,}"); m2.metric("Stations", f"{filt_df['Station'].nunique():,}")
+    m1.metric("Total Logs", f"{len(filt_df):,}"); m2.metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
     m3.metric("US States", filt_df[filt_df['Country']=='USA']['State'].nunique()); m4.metric("CA Prov", filt_df[filt_df['Country']=='Canada']['State'].nunique())
     m5.metric("MX States", filt_df[filt_df['Country']=='Mexico']['State'].nunique()); m6.metric("Countries", filt_df['Country'].nunique())
-    m7.metric("Max Dist", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
+    m7.metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Frequency', 'Station', 'City', 'State', 'DXer', d_col]].head(100), use_container_width=True)
 
-# 6. ES-CLOUD TRACKER
+# 6. ES-CLOUD TRACKER (TOTAL RESTORATION OF PLAYBACK CONTROLS)
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     view_mode = st.pills("LAYER", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -140,23 +141,37 @@ elif selected_page == "ES-CLOUD TRACKER":
         else:
             ds = st.date_input("Select Date", value=avail[-1])
             map_df = filt_df[filt_df['Date_Obj'] == ds]
+        speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "4x": {"delay": 0.01, "step": 4}}
+        play_speed = st.selectbox("Speed", options=list(speed_sets.keys()), index=1)
+        if st.button("📺 FULL SCREEN"): st.session_state.full_screen = not st.session_state.full_screen; st.rerun()
+
     if not map_df.empty:
         times = sorted(map_df['Time_Str'].dropna().unique().tolist())
-        current_time = hc2.select_slider("Time", options=["SHOW ALL"] + times, value="SHOW ALL")
+        pb1, pb2, pb_txt = st.columns([1, 1, 3])
+        if pb1.button("▶ PLAY"): st.session_state.playing = True; st.session_state.p_idx = 0; st.rerun()
+        if pb2.button("⏹ STOP"): st.session_state.playing = False; st.rerun()
+        current_time = times[st.session_state.p_idx] if st.session_state.playing else hc2.select_slider("Time", options=["SHOW ALL"] + times, value="SHOW ALL")
+        pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
         r_df = map_df if current_time == "SHOW ALL" else map_df[map_df['Time_Str'] == current_time]
+        
         layers = []
         if view_mode == "Es Cloud Location Heatmap":
             layers.append(pdk.Layer('HeatmapLayer', data=r_df[['Mid_Lat', 'Mid_Lon']].dropna(), get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]))
         else:
             layers.append(pdk.Layer('LineLayer', data=r_df[[dx_lat, dx_lon, st_lat, st_lon]].dropna(), get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
         st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers, height=1000))
+        if st.session_state.playing:
+            conf = speed_sets[play_speed]
+            if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
+            else: st.session_state.playing = False; st.rerun()
 
-# 7. MODULE 3: GEOGRAPHIC ANALYSIS
+# 7. GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["Country Stats", "Canadian Stats", "Mexican Stats", "US States", "Distance Stats"], default="US States")
     dx_st_col = next((c for c in filt_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
     dx_co_col = next((c for c in filt_df.columns if 'DXer' in c and 'Country' in c), 'DXer_Country')
+    mo_col, yr_col = next((c for c in filt_df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name'), next((c for c in filt_df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
     gs = [[0, 'rgb(100,0,0)'], [0.2, 'rgb(183,28,28)'], [0.5, 'rgb(211,47,47)'], [0.8, 'rgb(255,69,0)'], [1, 'rgb(255,165,0)']]
 
     if gv == "US States":
@@ -190,11 +205,10 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
         with c1:
             ca_d = filt_df[filt_df['Country'] == 'Canada']
             counts = ca_d.groupby('State').size().reset_index(name='Logs')
-            # GeoJSON Link for Canada Provincial borders
-            geojson_url = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson"
-            fig = px.choropleth(counts, geojson=geojson_url, locations='State', featureidkey="properties.name", color='Logs', color_continuous_scale=gs, template="plotly_dark")
-            fig.update_geos(fitbounds="locations", visible=False)
-            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', margin={"r":0,"t":0,"l":0,"b":0}, height=700)
+            # Use North America scope with Fitbounds for Canada
+            fig = px.choropleth(counts, locations='State', locationmode="country names", color='Logs', scope="north america", color_continuous_scale=gs, template="plotly_dark")
+            fig.update_geos(lataxis_range=[40, 70], lonaxis_range=[-140, -50], resolution=50, showcoastlines=True)
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black'), margin={"r":0,"t":0,"l":0,"b":0}, height=700)
             ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"c_{st.session_state.map_key}")
             if ev and ev.get("selection") and ev["selection"].get("points"):
                 st.session_state.selected_prov = ev["selection"]["points"][0]["location"]; st.rerun()
@@ -207,7 +221,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 st.markdown('<div class="stat-header">MOST HEARD</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     top = s_of.groupby(['Frequency', 'Station', 'City']).size().idxmax()
-                    st.markdown(f'<div class="stat-val">{top[1]}</div><div class="stat-label">{top[0]} MHz • {top[2]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{top[1]}</div>', unsafe_allow_html=True)
                 st.markdown('<div class="stat-header">TOP PATHS (US/CA)</div>', unsafe_allow_html=True)
                 p_in = s_fr[s_fr['Country'].isin(['USA', 'Canada'])].groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 st.dataframe(p_in, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
