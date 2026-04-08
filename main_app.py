@@ -3,10 +3,11 @@ import pandas as pd
 import pydeck as pdk
 import time
 import datetime
+import plotly.express as px
 from google.cloud import bigquery
 from google.oauth2 import service_account 
 
-# 1. THEME & UI STYLING
+# 1. THEME & UI STYLING (The Cinematic Core)
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
 
 if 'full_screen' not in st.session_state: st.session_state.full_screen = False
@@ -108,7 +109,7 @@ with st.sidebar:
 # 4. GLOBAL FILTERS
 if not st.session_state.full_screen:
     st.image("SEDAP Banner.png", width=600)
-    rk = f"v{st.session_state.reset_count}"
+    rk = f"v{st.session_state.reset_count}" 
     
     with st.expander(label="GLOBAL FILTERS", expanded=True):
         r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
@@ -149,7 +150,7 @@ f_map = {
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. PAGE LOGIC
+# 5. MODULE LOGIC
 if selected_page == "ES-CLOUD TRACKER":
     if not st.session_state.full_screen:
         st.header("Ionospheric Propagation Analysis")
@@ -218,28 +219,69 @@ elif selected_page == "DASHBOARD OVERVIEW":
 elif selected_page == "GEOGRAPHIC RADIUS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     
-    # 5 SECTION PILLS
     geo_sections = ["Country Stats", "Canadian Stats", "Mexican Stats", "US States", "Distance Stats"]
     geo_selection = st.pills("SELECT ANALYSIS MODULE", options=geo_sections, default="US States")
     
     st.markdown("---")
     
     if geo_selection == "US States":
-        st.subheader("🇺🇸 US State Analysis")
-        st.info("Module Active: US domestic logs filtered. Awaiting design.")
+        st.subheader("🇺🇸 US Domestic Log Density")
+        
+        # 1. Filter for US Logs only
+        us_data = filt_df[filt_df['Country'] == 'USA']
+        
+        if not us_data.empty:
+            # 2. Count logs per state
+            state_counts = us_data.groupby('State').size().reset_index(name='Log Count')
+            
+            # 3. Define Heatmap Color Scale (Tracker Consistent)
+            # [183, 28, 28] -> #B71C1C (Low)
+            # [255, 255, 255] -> #FFFFFF (High)
+            tracker_scale = [
+                [0.0, 'rgb(183, 28, 28)'], 
+                [0.25, 'rgb(211, 47, 47)'], 
+                [0.5, 'rgb(244, 67, 54)'], 
+                [0.75, 'rgb(255, 235, 238)'], 
+                [1.0, 'rgb(255, 255, 255)']
+            ]
+            
+            # 4. Build the Choropleth
+            fig = px.choropleth(
+                state_counts,
+                locations='State',
+                locationmode="USA-states",
+                color='Log Count',
+                scope="usa",
+                color_continuous_scale=tracker_scale,
+                template="plotly_dark"
+            )
+            
+            # 5. Aesthetic Polishing (No Gray, Stealth Black)
+            fig.update_layout(
+                geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black', showlakes=True),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                margin={"r":0,"t":40,"l":0,"b":0},
+                height=700,
+                coloraxis_colorbar=dict(title="Log Volume", thickness=15, len=0.5)
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("No US logs match the current global filter criteria.")
         
     elif geo_selection == "Country Stats":
-        st.subheader("🌎 International Stats (Excl. NA Big Three)")
-        st.info("Module Active: Global distribution analysis. Awaiting design.")
+        st.subheader("🌎 International Insights (Excl. NA Big Three)")
+        st.info("Awaiting design instructions for this module.")
         
     elif geo_selection == "Canadian Stats":
-        st.subheader("🍁 Canadian Province Stats")
-        st.info("Module Active: Province density analysis. Awaiting design.")
+        st.subheader("🍁 Canada Propagation Profile")
+        st.info("Awaiting design instructions for this module.")
         
     elif geo_selection == "Mexican Stats":
-        st.subheader("🇲🇽 Mexican State Stats")
-        st.info("Module Active: Mexico regional breakdown. Awaiting design.")
+        st.subheader("🇲🇽 Mexico Propagation Profile")
+        st.info("Awaiting design instructions for this module.")
         
     elif geo_selection == "Distance Stats":
-        st.subheader("📏 Distance Distribution Metrics")
-        st.info("Module Active: Signal path mileage analysis. Awaiting design.")
+        st.subheader("📏 Propagation Distance Metrics")
+        st.info("Awaiting design instructions for this module.")
