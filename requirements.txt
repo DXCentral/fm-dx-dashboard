@@ -4,8 +4,6 @@ pydeck
 google-cloud-bigquery
 db-dtypes
 streamlit-option-menu
-pydeck
-pandas
 imageio[ffmpeg]
 Pillow
 opencv-python-headless
