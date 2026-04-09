@@ -49,7 +49,7 @@ st.markdown("""
 
 def get_avg_date(dates_series):
     if dates_series.empty: return "N/A"
-    day_of_year = dates_series.dt.dayofyear
+    day_of_year = pd.to_datetime(dates_series).dt.dayofyear
     avg_day = int(day_of_year.mean())
     return (datetime.datetime(2024, 1, 1) + datetime.timedelta(days=avg_day - 1)).strftime('%b %d')
 
@@ -273,5 +273,3 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 if not s_of.empty:
                     t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                     st.dataframe(t5, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
-
-
