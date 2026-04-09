@@ -10,3 +10,5 @@ imageio[ffmpeg]
 Pillow
 opencv-python-headless
 plotly
+folium
+streamlit-folium
