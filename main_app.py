@@ -39,6 +39,7 @@ st.markdown("""
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
     .watermark { position: absolute; bottom: 80px; right: 40px; z-index: 1000; pointer-events: none; opacity: 0.4; }
+    
     .stat-header { color: #D32F2F; font-size: 0.95rem; font-weight: 400; margin-bottom: 5px; border-bottom: 1px solid #333; letter-spacing: 1px; padding-top: 15px; }
     .stat-val { font-size: 1.3rem; color: #FFF; font-weight: 300; margin-top: 5px;}
     .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 8px; line-height: 1.2; }
@@ -131,7 +132,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER (SACRED CONTROLS)
+# 6. MODULE 2: ES-CLOUD TRACKER (SACRED FOUNDATION)
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -169,7 +170,7 @@ elif selected_page == "ES-CLOUD TRACKER":
             if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
-# 7. MODULE 3: GEOGRAPHIC ANALYSIS
+# 7. MODULE 3: GEOGRAPHIC ANALYSIS (TRUE NAME LOCKDOWN)
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["Country Stats", "Canadian Stats", "Mexican Stats", "US States", "Distance Stats"], default="US States")
@@ -182,9 +183,9 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     ca_map = {'ON':'Ontario','QC':'Quebec','NS':'Nova Scotia','NB':'New Brunswick','MB':'Manitoba','BC':'British Columbia','PE':'Prince Edward Island','SK':'Saskatchewan','AB':'Alberta','NL':'Newfoundland and Labrador','NU':'Nunavut','NT':'Northwest Territories','YT':'Yukon'}
     mx_map = {
         'Aguascalientes':'Aguascalientes','Baja California Norte':'Baja California','Baja California Sur':'Baja California Sur','Campeche':'Campeche','Chiapas':'Chiapas','Chihuahua':'Chihuahua','Coahuila':'Coahuila','Colima':'Colima',
-        'Ciudad Mexico':'Distrito Federal','Ciudad de Mexico':'Distrito Federal','Ciudad de México':'Distrito Federal','Durango':'Durango','Estado de Mexico':'México','Guanajuato':'Guanajuato','Guerrero':'Guerrero','Hidalgo':'Hidalgo',
-        'Jalisco':'Jalisco','Michoacán':'Michoacán','Morelos':'Morelos','Nayarit':'Nayarit','Nuevo Leon':'Nuevo León','Oaxaca':'Oaxaca','Puebla':'Puebla','Querétaro':'Querétaro','Quintana Roo':'Quintana Roo','San Luis Potosi':'San Luis Potosí',
-        'Sinaloa':'Sinaloa','Sonora':'Sonora','Tabasco':'Tabasco','Tamaulipas':'Tamaulipas','Veracruz':'Veracruz','Yucatán':'Yucatán','Zacatecas':'Zacatecas'
+        'Ciudad Mexico':'Distrito Federal', 'Ciudad de Mexico':'Distrito Federal', 'Ciudad de México':'Distrito Federal', 'Estado de Mexico':'México', 'Guanajuato':'Guanajuato','Guerrero':'Guerrero','Hidalgo':'Hidalgo',
+        'Jalisco':'Jalisco','Michoacán':'Michoacán','Morelos':'Morelos','Nayarit':'Nayarit','Nuevo Leon':'Nuevo León','Oaxaca':'Oaxaca','Puebla':'Puebla','Querétaro':'Querétaro','Quintana Roo':'Quintana Roo',
+        'San Luis Potosi':'San Luis Potosí', 'Sinaloa':'Sinaloa','Sonora':'Sonora','Tabasco':'Tabasco','Tamaulipas':'Tamaulipas','Veracruz':'Veracruz','Yucatán':'Yucatán','Zacatecas':'Zacatecas'
     }
     geo_df = filt_df.copy()
     geo_df = geo_df[(geo_df['State'] != 'AM') & (geo_df['State'] != 'Grand Total')]
@@ -197,20 +198,18 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
 
     if gv == "US States": target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
     elif gv == "Canadian Stats": target, scope, loc_mode, gj_url, gj_key = 'Canada', 'north america', 'geojson-id', "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson", "properties.name"
-    elif gv == "Mexican Stats": target, scope, loc_mode, gj_url, gj_key = 'Mexico', None, 'geojson-id', "https://raw.githubusercontent.com/isellsoap/mexico-geojson/master/mexico.json", "properties.name"
+    elif gv == "Mexican Stats": target, scope, loc_mode, gj_url, gj_key = 'Mexico', 'north america', 'geojson-id', "https://raw.githubusercontent.com/angelnm789/mexico-states/master/mexico.json", "properties.name"
     else: target = None
 
     if target:
-        if not st.session_state.selected_state: col_m, col_f = st.columns([1, 0.001])
-        else: col_m, col_f = st.columns([3, 1])
-        
+        col_m, col_f = st.columns([3, 1]) if st.session_state.selected_state else st.columns([1, 0.001])
         with col_m:
             c_data = geo_df[geo_df['Country'] == target]
             if target == 'Canada': c_data['MapState'] = c_data['State'].map(ca_map)
             elif target == 'Mexico': c_data['MapState'] = c_data['State'].map(mx_map)
             else: c_data['MapState'] = c_data['State']
             
-            counts = c_data.groupby('MapState').size().reset_index(name='Logs')
+            counts = c_data.groupby('MapState').size().reset_index(name='Logs').dropna()
             fig = px.choropleth(counts, geojson=gj_url, locations='MapState', featureidkey=gj_key, locationmode=loc_mode, color='Logs', scope=scope, color_continuous_scale=gs, template="plotly_dark")
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black'), margin={"r":0,"t":0,"l":0,"b":0}, height=700)
             if target != 'USA': fig.update_geos(fitbounds="locations", visible=True, showsubunits=True, subunitcolor="#333")
@@ -228,11 +227,8 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 sel = st.session_state.selected_state
                 st.markdown(f"### {sel} INTEL")
                 if st.button("❌ CLEAR SELECTION", use_container_width=True): st.session_state.selected_state = None; st.session_state.map_key += 1; st.rerun()
-                
-                s_of = c_data[c_data['State'] == sel]
-                s_fr = geo_df[geo_df[dx_st_col] == sel]
+                s_of, s_fr = c_data[c_data['State'] == sel], geo_df[geo_df[dx_st_col] == sel]
 
-                # SACRED 10-POINT INTEL PACKAGE
                 st.markdown('<div class="stat-header">MOST HEARD STATION</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     top_st = s_of.groupby(['Frequency', 'Station', 'City']).size().idxmax()
