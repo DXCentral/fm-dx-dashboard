@@ -17,10 +17,10 @@ if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_state' not in st.session_state: st.session_state.selected_state = None
 if 'selected_prov' not in st.session_state: st.session_state.selected_prov = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 2500
+if 'map_key' not in st.session_state: st.session_state.map_key = 2600
 
 if st.session_state.full_screen:
-    st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
+    st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"] { display: none !important; } .stMain { padding: 0 !important; }</style>""", unsafe_allow_html=True)
 
 st.markdown("""
     <style>
@@ -34,7 +34,6 @@ st.markdown("""
     }
     div.stButton > button:hover { border-color: #D32F2F !important; color: #D32F2F !important; }
     div[data-testid="stPills"] button[aria-checked="true"] { border: 2px solid #D32F2F !important; background-color: #000000 !important; color: #FFFFFF !important; }
-    div[data-testid="stPills"] button { background-color: #000000 !important; border: 1px solid #444444 !important; border-radius: 25px !important; color: #888888 !important; }
     h1, h2, h3, h4 { color: #D32F2F !important; text-transform: uppercase; letter-spacing: 3px; }
     [data-testid="stSidebar"] { background-color: #0A0A0A; border-right: 1px solid #1A1A1A; }
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
@@ -45,12 +44,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-def get_avg_date(dates_series):
-    if dates_series.empty: return "N/A"
-    day_of_year = dates_series.dt.dayofyear
-    avg_day = int(day_of_year.mean())
-    return (datetime.datetime(2024, 1, 1) + datetime.timedelta(days=avg_day - 1)).strftime('%b %d')
-
+# 2. DATA LOADING
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -85,26 +79,29 @@ with st.sidebar:
     selected_page = option_menu("DATA MODULES", ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], 
         icons=["house", "cloud", "geo", "clock", "graph-up", "broadcast", "diagram-3"], default_index=0)
 
-# 4. GLOBAL FILTERS (ALL 13)
+# 4. GLOBAL FILTERS
 if not st.session_state.full_screen:
-    st.image("SEDAP Banner.png", width=600)
     rk = f"v{st.session_state.reset_count}"
     with st.expander("GLOBAL FILTERS", expanded=True):
-        r1 = st.columns(5); f_freq = r1[0].selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key=f"f1_{rk}")
+        r1 = st.columns(5)
+        f_freq = r1[0].selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key=f"f1_{rk}")
         f_dxer = r1[1].selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().astype(str).tolist()), key=f"f2_{rk}")
         f_station = r1[2].selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key=f"f3_{rk}")
         f_state = r1[3].selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key=f"f4_{rk}")
         f_country = r1[4].selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key=f"f5_{rk}")
-        r2 = st.columns(5); f_dxco = r2[0].selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().astype(str).tolist()), key=f"f6_{rk}")
+        r2 = st.columns(5)
+        f_dxco = r2[0].selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().astype(str).tolist()), key=f"f6_{rk}")
         f_dxst = r2[1].selectbox("DXer State", ["All"] + sorted(df['DXer_State_Prov'].dropna().unique().astype(str).tolist()), key=f"f7_{rk}")
         f_month = r2[2].selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key=f"f8_{rk}")
         f_year = r2[3].selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key=f"f9_{rk}")
         f_day = r2[4].selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key=f"f10_{rk}")
-        r3 = st.columns(3); f_dist = r3[0].selectbox("Distance Distribution", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().astype(str).tolist()), key=f"f11_{rk}")
+        r3 = st.columns(3)
+        f_dist = r3[0].selectbox("Distance Distribution", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().astype(str).tolist()), key=f"f11_{rk}")
         f_reg = r3[1].selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key=f"f12_{rk}")
         rds_c = 'RDS Decode?' if 'RDS Decode?' in df.columns else 'RDS Decode'
         f_rds = r3[2].selectbox("RDS Decode?", ["All"] + (sorted(df[rds_c].dropna().unique().astype(str).tolist()) if rds_c in df.columns else []), key=f"f13_{rk}")
         if st.button("RESET ALL FILTERS"): st.session_state.reset_count += 1; st.rerun()
+else: f_freq, f_dxer, f_station, f_state, f_country, f_dxco, f_dxst, f_month, f_year, f_day, f_dist, f_reg, f_rds = ["All"]*13
 
 filt_df = df.copy()
 f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_station, 'State':f_state, 'Country':f_country, 'DXer_Country':f_dxco, 'DXer_State_Prov':f_dxst, 'Local_Month':f_month, 'Local_Year':f_year, 'Month_Day':f_day, 'Distance_Distribution':f_dist, 'DXer_Region':f_reg, rds_c:f_rds}
@@ -114,20 +111,22 @@ for col, val in f_map.items():
 # 5. MODULE 1: DASHBOARD
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
-    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
-    m1.metric("Total Logs", f"{len(filt_df):,}"); m2.metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
-    m3.metric("US States", filt_df[filt_df['Country']=='USA']['State'].nunique()); m4.metric("CA Prov", filt_df[filt_df['Country']=='Canada']['State'].nunique())
-    m5.metric("MX States", filt_df[filt_df['Country']=='Mexico']['State'].nunique()); m6.metric("Countries", filt_df['Country'].nunique())
-    m7.metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
+    m = st.columns(7)
+    m[0].metric("Logs", f"{len(filt_df):,}"); m[1].metric("Stations", f"{filt_df['Station'].nunique():,}")
+    m[2].metric("US States", filt_df[filt_df['Country']=='USA']['State'].nunique())
+    m[3].metric("CA Prov", filt_df[filt_df['Country']=='Canada']['State'].nunique())
+    m[4].metric("MX States", filt_df[filt_df['Country']=='Mexico']['State'].nunique())
+    m[5].metric("Countries", filt_df['Country'].nunique())
+    m[6].metric("Max Dist", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Frequency', 'Station', 'City', 'State', 'DXer', d_col]].head(100), use_container_width=True)
 
 # 6. MODULE 2: ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
-    view_mode = st.pills("LAYER", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
+    vm = st.pills("LAYER", ["Heatmap", "Paths"], default="Heatmap")
     hc1, hc2 = st.columns([1, 2])
     with hc1:
-        range_on = st.checkbox("Enable Date Range Mode", value=True) 
+        range_on = st.checkbox("Enable Range", value=True) 
         avail = sorted(filt_df['Date_Obj'].unique()) 
         if range_on:
             dr = st.date_input("Select Range", value=(avail[0], avail[-1]))
@@ -147,7 +146,7 @@ elif selected_page == "ES-CLOUD TRACKER":
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
         r_df = map_df if current_time == "SHOW ALL" else map_df[map_df['Time_Str'] == current_time]
         layers = []
-        if view_mode == "Es Cloud Location Heatmap":
+        if vm == "Heatmap":
             layers.append(pdk.Layer('HeatmapLayer', data=r_df[['Mid_Lat', 'Mid_Lon']].dropna(), get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]))
         else:
             layers.append(pdk.Layer('LineLayer', data=r_df[[dx_lat, dx_lon, st_lat, st_lon]].dropna(), get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
@@ -162,8 +161,6 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["Country Stats", "Canadian Stats", "Mexican Stats", "US States", "Distance Stats"], default="US States")
     dx_st_col = next((c for c in filt_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
-    dx_co_col = next((c for c in filt_df.columns if 'DXer' in c and 'Country' in c), 'DXer_Country')
-    mo_col, yr_col = next((c for c in filt_df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name'), next((c for c in filt_df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
     gs = [[0, 'rgb(100,0,0)'], [0.2, 'rgb(183,28,28)'], [0.5, 'rgb(211,47,47)'], [0.8, 'rgb(255,69,0)'], [1, 'rgb(255,165,0)']]
 
     if gv == "US States":
@@ -182,39 +179,36 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 sel = st.session_state.selected_state
                 st.markdown(f"### {sel} INTEL")
                 if st.button("❌ CLEAR"): st.session_state.selected_state = None; st.session_state.map_key += 1; st.rerun()
-                s_of, s_fr = us_d[us_d['State'] == sel], filt_df[filt_df[dx_st_col] == sel]
+                s_of = us_d[us_d['State'] == sel]
                 st.markdown('<div class="stat-header">MOST HEARD</div>', unsafe_allow_html=True)
                 if not s_of.empty:
-                    top = s_of.groupby(['Frequency', 'Station', 'City']).size().idxmax()
-                    st.markdown(f'<div class="stat-val">{top[1]}</div><div class="stat-label">{top[0]} MHz • {top[2]}</div>', unsafe_allow_html=True)
-                st.markdown('<div class="stat-header">TOP PATHS (US/CA)</div>', unsafe_allow_html=True)
-                p_in = s_fr[s_fr['Country'].isin(['USA', 'Canada'])].groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
-                st.dataframe(p_in, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
+                    top = s_of.groupby(['Frequency', 'Station']).size().idxmax()
+                    st.markdown(f'<div class="stat-val">{top[1]}</div>', unsafe_allow_html=True)
 
     elif gv == "Canadian Stats":
         if not st.session_state.selected_prov: col_m, col_f = st.columns([1, 0.001])
         else: col_m, col_f = st.columns([3, 1])
         with col_m:
-            ca_d = filt_df[filt_df['Country'] == 'Canada']
-            counts = ca_d.groupby('State').size().reset_index(name='Logs')
-            # GeoJSON PROPERTY MATCH FIX
-            gj_url = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson"
-            fig = px.choropleth(counts, geojson=gj_url, locations='State', featureidkey="properties.name", color='Logs', color_continuous_scale=gs, template="plotly_dark")
-            fig.update_geos(fitbounds="locations", visible=False)
+            ca_d = filt_df[filt_df['Country'] == 'Canada'].copy()
+            # BAKE IN PROVINCE MAPPING
+            prov_map = {'Ontario':'ON','Quebec':'QC','Nova Scotia':'NS','New Brunswick':'NB','Manitoba':'MB','British Columbia':'BC','Prince Edward Island':'PE','Saskatchewan':'SK','Alberta':'AB','Newfoundland and Labrador':'NL'}
+            ca_d['Code'] = ca_d['State'].map(prov_map)
+            counts = ca_d.groupby('Code').size().reset_index(name='Logs')
+            # Use Local ISO-3 Mapping (Bulletproof)
+            fig = px.choropleth(counts, locations='Code', color='Logs', color_continuous_scale=gs, locationmode="geojson-id", scope="north america", template="plotly_dark")
+            fig.update_geos(lataxis_range=[40, 75], lonaxis_range=[-140, -50], visible=False)
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', margin={"r":0,"t":0,"l":0,"b":0}, height=700)
             ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"c_{st.session_state.map_key}")
             if ev and ev.get("selection") and ev["selection"].get("points"):
-                st.session_state.selected_prov = ev["selection"]["points"][0]["location"]; st.rerun()
+                inv_map = {v: k for k, v in prov_map.items()}
+                st.session_state.selected_prov = inv_map.get(ev["selection"]["points"][0]["location"]); st.rerun()
         if st.session_state.selected_prov:
             with col_f:
                 sel = st.session_state.selected_prov
                 st.markdown(f"### {sel} INTEL")
                 if st.button("❌ CLEAR"): st.session_state.selected_prov = None; st.session_state.map_key += 1; st.rerun()
-                s_of, s_fr = ca_d[ca_d['State'] == sel], filt_df[filt_df[dx_st_col] == sel]
+                s_of = ca_d[ca_d['State'] == sel]
                 st.markdown('<div class="stat-header">MOST HEARD</div>', unsafe_allow_html=True)
                 if not s_of.empty:
-                    top = s_of.groupby(['Frequency', 'Station', 'City']).size().idxmax()
+                    top = s_of.groupby(['Frequency', 'Station']).size().idxmax()
                     st.markdown(f'<div class="stat-val">{top[1]}</div>', unsafe_allow_html=True)
-                st.markdown('<div class="stat-header">TOP PATHS (US/CA)</div>', unsafe_allow_html=True)
-                p_in = s_fr[s_fr['Country'].isin(['USA', 'Canada'])].groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
-                st.dataframe(p_in, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
