@@ -16,7 +16,7 @@ if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_state' not in st.session_state: st.session_state.selected_state = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 35000
+if 'map_key' not in st.session_state: st.session_state.map_key = 40000
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -39,7 +39,6 @@ st.markdown("""
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
     .watermark { position: absolute; bottom: 80px; right: 40px; z-index: 1000; pointer-events: none; opacity: 0.4; }
-    
     .stat-header { color: #D32F2F; font-size: 0.95rem; font-weight: 400; margin-bottom: 5px; border-bottom: 1px solid #333; letter-spacing: 1px; padding-top: 15px; }
     .stat-val { font-size: 1.3rem; color: #FFF; font-weight: 300; margin-top: 5px;}
     .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 8px; line-height: 1.2; }
@@ -51,8 +50,7 @@ def get_avg_date(dates_series):
     if dates_series.empty: return "N/A"
     try:
         ds = pd.to_datetime(dates_series)
-        avg_day = int(ds.dt.dayofyear.mean())
-        return (datetime.datetime(2024, 1, 1) + datetime.timedelta(days=avg_day - 1)).strftime('%b %d')
+        return (datetime.datetime(2024, 1, 1) + datetime.timedelta(days=int(ds.dt.dayofyear.mean()) - 1)).strftime('%b %d')
     except: return "N/A"
 
 # 2. DATA LOADING
@@ -125,7 +123,7 @@ for col, val in f_map.items():
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
-    m[0].metric("Total Logs", f"{len(filt_df):,}"); m[1].metric("Stations", f"{filt_df['Station'].nunique():,}")
+    m[0].metric("Total Logs", f"{len(filt_df):,}"); m[1].metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
     m[2].metric("US States", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
     m[3].metric("CA Prov", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
     m[4].metric("MX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
@@ -133,7 +131,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER
+# 6. MODULE 2: ES-CLOUD TRACKER (SACRED CONTROLS)
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -148,7 +146,6 @@ elif selected_page == "ES-CLOUD TRACKER":
             date_range = st.date_input("Select Date Range", value=(avail_days[0], avail_days[-1]))
             if len(date_range) == 2: map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
             else: map_df = filt_df[filt_df['Date_Obj'] == date_range[0]]
-        
         speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "4x": {"delay": 0.01, "step": 4}}
         play_speed = st.selectbox("Playback Speed", options=list(speed_sets.keys()), index=1)
         if st.button("📺 VIEW FULL SCREEN" if not st.session_state.full_screen else "❌ EXIT"): st.session_state.full_screen = not st.session_state.full_screen; st.rerun()
@@ -158,22 +155,18 @@ elif selected_page == "ES-CLOUD TRACKER":
         pb1, pb2, pb_txt = st.columns([1, 1, 3])
         if pb1.button("▶ PLAY"): st.session_state.playing = True; st.session_state.p_idx = 0; st.rerun()
         if pb2.button("⏹ STOP"): st.session_state.playing = False; st.rerun()
-        
         current_time = times[st.session_state.p_idx] if st.session_state.playing else hc2.select_slider("Time Control", options=["SHOW ALL"] + times, value="SHOW ALL")
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
-        
         render_df = map_df if current_time == "SHOW ALL" else map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(current_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))]
         layers = []
         if vm == "Es Cloud Location Heatmap":
             layers.append(pdk.Layer('HeatmapLayer', data=render_df[['Mid_Lat', 'Mid_Lon']].dropna(), get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, threshold=0.03, color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]))
         else:
             layers.append(pdk.Layer('LineLayer', data=render_df[[dx_lat, dx_lon, st_lat, st_lon]].dropna(), get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
-        
         st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers, height=1000))
         if st.session_state.playing:
             conf = speed_sets[play_speed]
-            if st.session_state.p_idx + conf['step'] < len(times):
-                st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
+            if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
 # 7. MODULE 3: GEOGRAPHIC ANALYSIS
@@ -185,13 +178,16 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     if 'last_gv' not in st.session_state or st.session_state.last_gv != gv:
         st.session_state.selected_state = None; st.session_state.last_gv = gv
 
-    # 🧹 DATA SANITIZERS & MAP TRANSLATION
+    # 🧹 DATA SANITIZERS & ID TRANSLATION
     ca_map = {'ON':'Ontario','QC':'Quebec','NS':'Nova Scotia','NB':'New Brunswick','MB':'Manitoba','BC':'British Columbia','PE':'Prince Edward Island','SK':'Saskatchewan','AB':'Alberta','NL':'Newfoundland and Labrador','NU':'Nunavut','NT':'Northwest Territories','YT':'Yukon'}
     mx_map = {
-        'Aguascalientes':'Aguascalientes','Baja California Norte':'Baja California','Baja California Sur':'Baja California Sur','Campeche':'Campeche','Chiapas':'Chiapas','Chihuahua':'Chihuahua','Coahuila':'Coahuila','Colima':'Colima','Ciudad Mexico':'Distrito Federal','Cuidad Mexico':'Distrito Federal','Durango':'Durango','Estado de Mexico':'México','Guanajuato':'Guanajuato','Guerrero':'Guerrero','Hidalgo':'Hidalgo','Jalisco':'Jalisco','Michoacán':'Michoacán','Morelos':'Morelos','Nayarit':'Nayarit','Nuevo Leon':'Nuevo León','Oaxaca':'Oaxaca','Puebla':'Puebla','Querétaro':'Querétaro','Quintana Roo':'Quintana Roo','San Luis Potosi':'San Luis Potosí','Sinaloa':'Sinaloa','Sonora':'Sonora','Tabasco':'Tabasco','Tamaulipas':'Tamaulipas','Veracruz':'Veracruz','Yucatán':'Yucatán','Zacatecas':'Zacatecas'
+        'Aguascalientes':'Aguascalientes','Baja California Norte':'Baja California','Baja California Sur':'Baja California Sur','Campeche':'Campeche','Chiapas':'Chiapas','Chihuahua':'Chihuahua','Coahuila':'Coahuila','Colima':'Colima',
+        'Ciudad Mexico':'Distrito Federal','Ciudad de Mexico':'Distrito Federal','Ciudad de México':'Distrito Federal','Durango':'Durango','Estado de Mexico':'México','Guanajuato':'Guanajuato','Guerrero':'Guerrero','Hidalgo':'Hidalgo',
+        'Jalisco':'Jalisco','Michoacán':'Michoacán','Morelos':'Morelos','Nayarit':'Nayarit','Nuevo Leon':'Nuevo León','Oaxaca':'Oaxaca','Puebla':'Puebla','Querétaro':'Querétaro','Quintana Roo':'Quintana Roo','San Luis Potosi':'San Luis Potosí',
+        'Sinaloa':'Sinaloa','Sonora':'Sonora','Tabasco':'Tabasco','Tamaulipas':'Tamaulipas','Veracruz':'Veracruz','Yucatán':'Yucatán','Zacatecas':'Zacatecas'
     }
     geo_df = filt_df.copy()
-    geo_df = geo_df[geo_df['State'] != 'AM'] 
+    geo_df = geo_df[(geo_df['State'] != 'AM') & (geo_df['State'] != 'Grand Total')]
     
     dx_st_col = next((c for c in geo_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
     dx_co_col = next((c for c in geo_df.columns if 'DXer' in c and 'Country' in c), 'DXer_Country')
@@ -216,9 +212,9 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
             
             counts = c_data.groupby('MapState').size().reset_index(name='Logs')
             fig = px.choropleth(counts, geojson=gj_url, locations='MapState', featureidkey=gj_key, locationmode=loc_mode, color='Logs', scope=scope, color_continuous_scale=gs, template="plotly_dark")
-            if target != 'USA': fig.update_geos(fitbounds="locations", visible=True, showsubunits=True, subunitcolor="#333")
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black'), margin={"r":0,"t":0,"l":0,"b":0}, height=700)
-            ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"map_{gv}_{st.session_state.map_key}")
+            if target != 'USA': fig.update_geos(fitbounds="locations", visible=True, showsubunits=True, subunitcolor="#333")
+            ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"m_{gv}_{st.session_state.map_key}")
             
             if ev and ev.get("selection") and ev["selection"].get("points"):
                 raw_loc = ev["selection"]["points"][0]["location"]
@@ -236,6 +232,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 s_of = c_data[c_data['State'] == sel]
                 s_fr = geo_df[geo_df[dx_st_col] == sel]
 
+                # SACRED 10-POINT INTEL PACKAGE
                 st.markdown('<div class="stat-header">MOST HEARD STATION</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     top_st = s_of.groupby(['Frequency', 'Station', 'City']).size().idxmax()
@@ -246,18 +243,18 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     m_c, y_c = s_of[mo_col].value_counts(), s_of[yr_col].value_counts()
                     st.markdown(f'<div class="stat-val">{str(m_c.idxmax()).upper()} ({m_c.max()})</div><div class="stat-val">{y_c.idxmax()} ({y_c.max()})</div>', unsafe_allow_html=True)
                     st.markdown('<div class="window-box">', unsafe_allow_html=True)
-                    st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - Signals From This Region</div>', unsafe_allow_html=True)
-                    of_d = pd.to_datetime(s_of['Local_Date'])
-                    st.markdown(f'<div class="stat-label">Start: {get_avg_date(of_d.groupby(s_of["Local_Year"]).min())} | Peak: {get_avg_date(of_d)} | End: {get_avg_date(of_d.groupby(s_of["Local_Year"]).max())}</div>', unsafe_allow_html=True)
-                    st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - DXers From This Region</div>', unsafe_allow_html=True)
-                    fr_d = pd.to_datetime(s_fr['Local_Date'])
-                    st.markdown(f'<div class="stat-label">Start: {get_avg_date(fr_d.groupby(s_fr["Local_Year"]).min())} | Peak: {get_avg_date(fr_d)} | End: {get_avg_date(fr_d.groupby(s_fr["Local_Year"]).max())}</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - Signals From Region</div>', unsafe_allow_html=True)
+                    od = pd.to_datetime(s_of['Local_Date'])
+                    st.markdown(f'<div class="stat-label">Start: {get_avg_date(od.groupby(s_of["Local_Year"]).min())} | Peak: {get_avg_date(od)} | End: {get_avg_date(od.groupby(s_of["Local_Year"]).max())}</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - DXers In Region</div>', unsafe_allow_html=True)
+                    fd = pd.to_datetime(s_fr['Local_Date'])
+                    st.markdown(f'<div class="stat-label">Start: {get_avg_date(fd.groupby(s_fr["Local_Year"]).min())} | Peak: {get_avg_date(fd)} | End: {get_avg_date(fd.groupby(s_fr["Local_Year"]).max())}</div>', unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
 
                 st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     f = s_of.sort_values(d_col, ascending=False).iloc[0]
-                    st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div><div class="stat-label">{f["Station"]} by {f["DXer"]} on {f[dt_col]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div><div class="stat-label">{f["Station"]} by {f["DXer"]}</div>', unsafe_allow_html=True)
 
                 st.markdown('<div class="stat-header">LOCAL DXER ACTIVITY</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-val">{s_fr["DXer"].nunique()} UNIQUE DXERS</div>', unsafe_allow_html=True)
