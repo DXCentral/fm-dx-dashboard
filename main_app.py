@@ -16,7 +16,7 @@ if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_region' not in st.session_state: st.session_state.selected_region = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 9000
+if 'map_key' not in st.session_state: st.session_state.map_key = 9500
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"] { display: none !important; } .stMain { padding: 0 !important; }</style>""", unsafe_allow_html=True)
@@ -107,83 +107,72 @@ if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
     m[0].metric("Logs", f"{len(filt_df):,}"); m[1].metric("Stations", f"{filt_df['Station'].nunique():,}")
-    m[2].metric("US States", filt_df[filt_df['Country']=='USA']['State'].nunique()); m[3].metric("CA Prov", filt_df[filt_df['Country']=='Canada']['State'].nunique())
-    m[4].metric("MX States", filt_df[filt_df['Country']=='Mexico']['State'].nunique()); m[5].metric("Countries", filt_df['Country'].nunique())
+    m[2].metric("US States", filt_df[filt_df['Country']=='USA']['State'].nunique())
+    m[3].metric("CA Prov", filt_df[filt_df['Country']=='Canada']['State'].nunique())
+    m[4].metric("MX States", filt_df[filt_df['Country']=='Mexico']['State'].nunique())
+    m[5].metric("Countries", filt_df['Country'].nunique())
     m[6].metric("Max Dist", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Frequency', 'Station', 'City', 'State', 'DXer', d_col]].head(100), use_container_width=True)
 
-# 6. ES-CLOUD TRACKER
-elif selected_page == "ES-CLOUD TRACKER":
-    st.header("Ionospheric propagation analysis")
-    if not filt_df.empty:
-        layers = [pdk.Layer('HeatmapLayer', data=filt_df[['Mid_Lat', 'Mid_Lon']].dropna(), get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0)]
-        st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers, height=1000))
-
-# 7. MODULE 3: GEOGRAPHIC ANALYSIS
+# 6. MODULE 3: GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("SELECT VIEW", options=["US STATES", "CANADIAN PROVINCES", "MEXICAN STATES", "DISTANCE STATS"], default="US STATES")
     st.markdown("---")
     
-    # Selection Persistence Fix
-    if 'last_gv' not in st.session_state or st.session_state.last_gv != gv:
-        st.session_state.selected_region = None
-        st.session_state.last_gv = gv
-
     dx_st_col = next((c for c in filt_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
     mo_col, yr_col = next((c for c in filt_df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name'), next((c for c in filt_df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
     gs = [[0, 'rgb(100,0,0)'], [0.2, 'rgb(183,28,28)'], [0.5, 'rgb(211,47,47)'], [0.8, 'rgb(255,69,0)'], [1, 'rgb(255,165,0)']]
 
-    # Mapping engine for Canada/Mexico
-    target_country = 'USA' if gv == "US STATES" else ('Canada' if gv == "CANADIAN PROVINCES" else 'Mexico')
-    loc_mode = "USA-states" if target_country == 'USA' else "country names"
-    scope = "usa" if target_country == 'USA' else "north america"
-
-    if gv in ["US STATES", "CANADIAN PROVINCES", "MEXICAN STATES"]:
+    if gv == "US STATES":
         if not st.session_state.selected_region: col_m, col_f = st.columns([1, 0.001])
         else: col_m, col_f = st.columns([3, 1])
-        
         with col_m:
-            c_data = filt_df[filt_df['Country'] == target_country]
-            counts = c_data.groupby('State').size().reset_index(name='Logs')
-            
-            # The "Google Style" Engine: Using country-specific location names
-            fig = px.choropleth(counts, locations='State', locationmode=loc_mode, color='Logs', scope=scope, color_continuous_scale=gs, template="plotly_dark")
-            
-            # This forces the map to center on Canada/Mexico and show provincial lines
-            if target_country == 'Canada': fig.update_geos(lataxis_range=[40, 75], lonaxis_range=[-140, -50], showsubunits=True, subunitcolor="#333")
-            elif target_country == 'Mexico': fig.update_geos(lataxis_range=[14, 33], lonaxis_range=[-118, -86], showsubunits=True, subunitcolor="#333")
-            
-            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)'), margin={"r":0,"t":0,"l":0,"b":0}, height=750)
-            ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"geo_{gv}_{st.session_state.map_key}")
-            
+            us_d = filt_df[filt_df['Country'] == 'USA']
+            counts = us_d.groupby('State').size().reset_index(name='Logs')
+            fig = px.choropleth(counts, locations='State', locationmode="USA-states", color='Logs', scope="usa", color_continuous_scale=gs, template="plotly_dark")
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black'), margin={"r":0,"t":0,"l":0,"b":0}, height=700)
+            ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"us_map_{st.session_state.map_key}")
             if ev and ev.get("selection") and ev["selection"].get("points"):
                 st.session_state.selected_region = ev["selection"]["points"][0]["location"]; st.rerun()
 
-        if st.session_state.selected_region:
-            with col_f:
-                sel = st.session_state.selected_region
-                st.markdown(f"### {sel} INTEL")
-                if st.button("❌ CLEAR SELECTION"): st.session_state.selected_region = None; st.session_state.map_key += 1; st.rerun()
+    elif gv in ["CANADIAN PROVINCES", "MEXICAN STATES"]:
+        target_country = 'Canada' if gv == "CANADIAN PROVINCES" else 'Mexico'
+        c_data = filt_df[filt_df['Country'] == target_country]
+        
+        # INTERACTIVE DRILL DOWN
+        sel_name = st.selectbox(f"SELECT {target_country.upper()} REGION FOR INTEL", ["NONE"] + sorted(c_data['State'].dropna().unique().tolist()))
+        if sel_name == "NONE": col_m, col_f = st.columns([1, 0.001])
+        else: 
+            st.session_state.selected_region = sel_name
+            col_m, col_f = st.columns([3, 1])
+        
+        with col_m:
+            # Scatter Plot Map for perfect border-less accuracy
+            fig = px.scatter_geo(c_data, lat=st_lat, lon=st_lon, color='State', hover_name='Station', scope='north america', template='plotly_dark')
+            if target_country == 'Canada': fig.update_geos(lataxis_range=[40, 75], lonaxis_range=[-140, -50], showcountries=True)
+            else: fig.update_geos(lataxis_range=[14, 33], lonaxis_range=[-118, -86], showcountries=True)
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', margin={"r":0,"t":0,"l":0,"b":0}, height=700)
+            st.plotly_chart(fig, use_container_width=True)
+
+    # SHARED FLYOUT ENGINE
+    if st.session_state.selected_region:
+        with col_f:
+            sel = st.session_state.selected_region
+            st.markdown(f"### {sel} INTEL")
+            if st.button("❌ CLEAR SELECTION"): st.session_state.selected_region = None; st.rerun()
+            
+            s_of = filt_df[filt_df['State'] == sel]
+            s_fr = filt_df[filt_df[dx_st_col] == sel]
+
+            if not s_of.empty:
+                top = s_of.groupby(['Frequency', 'Station', 'City']).size().idxmax()
+                st.markdown(f'<div class="stat-header">MOST HEARD</div><div class="stat-val">{top[1]}</div><div class="stat-label">{top[0]} MHz • {top[2]}</div>', unsafe_allow_html=True)
                 
-                s_of, s_fr = c_data[c_data['State'] == sel], filt_df[filt_df[dx_st_col] == sel]
-
-                # FULL FLYOUT Intel Restoration
-                if not s_of.empty:
-                    top = s_of.groupby(['Frequency', 'Station', 'City']).size().idxmax()
-                    st.markdown('<div class="stat-header">MOST HEARD STATION</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="stat-val">{top[1]}</div><div class="stat-label">{top[0]} MHz • {top[2]}</div>', unsafe_allow_html=True)
-                    
-                    st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
-                    m_c = s_of[mo_col].value_counts()
-                    st.markdown(f'<div class="stat-val">{str(m_c.idxmax()).upper()}</div>', unsafe_allow_html=True)
-                    
-                    st.markdown('<div class="window-box">', unsafe_allow_html=True)
-                    st.markdown(f'<div class="stat-label" style="color:#D32F2F">PROPAGATION WINDOW</div>', unsafe_allow_html=True)
-                    of_dates = pd.to_datetime(s_of['Local_Date'])
-                    st.markdown(f'<div class="stat-label">Start: {get_avg_date(of_dates.groupby(s_of["Local_Year"]).min())} | Peak: {get_avg_date(of_dates)} | End: {get_avg_date(of_dates.groupby(s_of["Local_Year"]).max())}</div>', unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-
-                st.markdown('<div class="stat-header">TOP PATHS (US/CA/MX)</div>', unsafe_allow_html=True)
+                st.markdown('<div class="stat-header">SEASON WINDOW</div>', unsafe_allow_html=True)
+                of_dates = pd.to_datetime(s_of['Local_Date'])
+                st.markdown(f'<div class="stat-label">Start: {get_avg_date(of_dates.groupby(s_of["Local_Year"]).min())} | Peak: {get_avg_date(of_dates)} | End: {get_avg_date(of_dates.groupby(s_of["Local_Year"]).max())}</div>', unsafe_allow_html=True)
+                
+                st.markdown('<div class="stat-header">TOP PATHS</div>', unsafe_allow_html=True)
                 p_in = s_fr.groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 st.dataframe(p_in, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
