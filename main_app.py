@@ -16,7 +16,7 @@ if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_state' not in st.session_state: st.session_state.selected_state = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 20000
+if 'map_key' not in st.session_state: st.session_state.map_key = 25000
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -78,7 +78,7 @@ def load_data():
         dist_col = [c for c in df.columns if 'Distance' in c and 'mi' in c][0]
         return df, df['Date_Obj'].max(), dist_col, dx_lat, dx_lon, st_lat, st_lon
     except Exception as e:
-        st.error(f"System Link Failure: {e}"); return pd.DataFrame(), None, "Distance", None, None, None, None
+        st.error(f"Link Failure: {e}"); return pd.DataFrame(), None, "Distance", None, None, None, None
 
 df, last_date, d_col, dx_lat, dx_lon, st_lat, st_lon = load_data()
 if df.empty: st.stop()
@@ -87,34 +87,32 @@ if df.empty: st.stop()
 from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
-    selected_page = option_menu(menu_title="DATA MODULES", 
-        options=["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], 
-        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], 
-        default_index=0)
+    selected_page = option_menu("DATA MODULES", ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ", "RECEPTION DYNAMICS"], 
+        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin", "diagram-3"], default_index=0)
 
 # 4. GLOBAL FILTERS
 if not st.session_state.full_screen:
     st.image("SEDAP Banner.png", width=600)
     rk = f"v{st.session_state.reset_count}" 
-    with st.expander(label="GLOBAL FILTERS", expanded=True):
+    with st.expander("GLOBAL FILTERS", expanded=True):
         r1 = st.columns(5)
-        f_freq = r1[0].selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key=f"f1_{rk}")
-        f_dxer = r1[1].selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().astype(str).tolist()), key=f"f2_{rk}")
-        f_stat = r1[2].selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key=f"f3_{rk}")
-        f_state = r1[3].selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key=f"f4_{rk}")
-        f_ctry = r1[4].selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key=f"f5_{rk}")
+        f_freq = r1[0].selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key=f"fq_{rk}")
+        f_dxer = r1[1].selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().astype(str).tolist()), key=f"dx_{rk}")
+        f_stat = r1[2].selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key=f"st_{rk}")
+        f_state = r1[3].selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key=f"ste_{rk}")
+        f_ctry = r1[4].selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key=f"ct_{rk}")
         r2 = st.columns(5)
-        f_dxco = r2[0].selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().astype(str).tolist()), key=f"f6_{rk}")
-        f_dxst = r2[1].selectbox("DXer State", ["All"] + sorted(df['DXer_State_Prov'].dropna().unique().astype(str).tolist()), key=f"f7_{rk}")
-        f_month = r2[2].selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key=f"f8_{rk}")
-        f_year = r2[3].selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key=f"f9_{rk}")
-        f_day = r2[4].selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key=f"f10_{rk}")
+        f_dxco = r2[0].selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().astype(str).tolist()), key=f"dc_{rk}")
+        f_dxst = r2[1].selectbox("DXer State", ["All"] + sorted(df['DXer_State_Prov'].dropna().unique().astype(str).tolist()), key=f"ds_{rk}")
+        f_month = r2[2].selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key=f"mo_{rk}")
+        f_year = r2[3].selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key=f"yr_{rk}")
+        f_day = r2[4].selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key=f"da_{rk}")
         r3 = st.columns(3)
-        f_dist = r3[0].selectbox("Distance Dist.", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().astype(str).tolist()), key=f"f11_{rk}")
-        f_reg = r3[1].selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key=f"f12_{rk}")
+        f_dist = r3[0].selectbox("Distance Dist.", ["All"] + sorted(df['Distance_Distribution'].dropna().unique().astype(str).tolist()), key=f"di_{rk}")
+        f_reg = r3[1].selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key=f"re_{rk}")
         rds_c = 'RDS Decode?' if 'RDS Decode?' in df.columns else 'RDS Decode'
-        f_rds = r3[2].selectbox("RDS Decode?", ["All"] + (sorted(df[rds_c].dropna().unique().astype(str).tolist()) if rds_c in df.columns else []), key=f"f13_{rk}")
-        if st.button("RESET ALL FILTERS", key="global_reset"): st.session_state.reset_count += 1; st.rerun()
+        f_rds = r3[2].selectbox("RDS Decode?", ["All"] + (sorted(df[rds_c].dropna().unique().astype(str).tolist()) if rds_c in df.columns else []), key=f"rd_{rk}")
+        if st.button("RESET ALL FILTERS"): st.session_state.reset_count += 1; st.rerun()
 else:
     f_freq, f_dxer, f_stat, f_state, f_ctry, f_dxco, f_dxst, f_month, f_year, f_day, f_dist, f_reg, f_rds = ["All"] * 13
 
@@ -123,19 +121,19 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state, '
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULE 1: DASHBOARD OVERVIEW
+# 5. DASHBOARD OVERVIEW
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
     m1.metric("Total Logs", f"{len(filt_df):,}"); m2.metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
-    m3.metric("US States Heard", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
-    m4.metric("CA Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
+    m3.metric("US States", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
+    m4.metric("CA Prov", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
     m5.metric("MX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
-    m6.metric("Countries Heard", filt_df['Country'].nunique())
+    m6.metric("Countries", filt_df['Country'].nunique())
     m7.metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER
+# 6. ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER", ["Heatmap", "Paths"], default="Heatmap")
@@ -156,14 +154,10 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     gv = st.pills("MODULE", options=["Country Stats", "Canadian Stats", "Mexican Stats", "US States", "Distance Stats"], default="US States")
     st.markdown("---")
     
-    # Selection Persistence
-    if 'last_gv' not in st.session_state or st.session_state.last_gv != gv:
-        st.session_state.selected_state = None; st.session_state.last_gv = gv
-
-    # 🧹 DATA SANITIZER (The Fix)
+    # 🧹 DATA SANITIZER
     ca_name_map = {'ON':'Ontario','QC':'Quebec','NS':'Nova Scotia','NB':'New Brunswick','MB':'Manitoba','BC':'British Columbia','PE':'Prince Edward Island','SK':'Saskatchewan','AB':'Alberta','NL':'Newfoundland and Labrador','NU':'Nunavut','NT':'Northwest Territories','YT':'Yukon'}
     geo_df = filt_df.copy()
-    geo_df = geo_df[geo_df['State'] != 'AM'] # Final purge of Armenian Poison Pill
+    geo_df = geo_df[geo_df['State'] != 'AM']
     
     dx_st_col = next((c for c in geo_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
     dx_co_col = next((c for c in geo_df.columns if 'DXer' in c and 'Country' in c), 'DXer_Country')
@@ -171,7 +165,9 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     dt_col, tm_col = next((c for c in geo_df.columns if 'Local' in c and 'Date' in c), 'Local_Date'), next((c for c in geo_df.columns if 'Local' in c and 'Time' in c), 'Local_Time')
     gs = [[0, 'rgb(100,0,0)'], [0.2, 'rgb(183,28,28)'], [0.5, 'rgb(211,47,47)'], [0.8, 'rgb(255,69,0)'], [1, 'rgb(255,165,0)']]
 
-    # Map Logic Engine
+    if 'last_gv' not in st.session_state or st.session_state.last_gv != gv:
+        st.session_state.selected_state = None; st.session_state.last_gv = gv
+
     if gv == "US States": target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
     elif gv == "Canadian Stats": target, scope, loc_mode, gj_url, gj_key = 'Canada', 'north america', 'geojson-id', "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson", "properties.name"
     elif gv == "Mexican Stats": target, scope, loc_mode, gj_url, gj_key = 'Mexico', 'north america', 'geojson-id', "https://raw.githubusercontent.com/angelnm789/mexico-states/master/mexico.json", "properties.name"
@@ -189,12 +185,17 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
             fig = px.choropleth(counts, geojson=gj_url, locations='MapState', featureidkey=gj_key, locationmode=loc_mode, color='Logs', scope=scope, color_continuous_scale=gs, template="plotly_dark")
             if target != 'USA': fig.update_geos(fitbounds="locations", visible=True, showsubunits=True, subunitcolor="#333")
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black'), margin={"r":0,"t":0,"l":0,"b":0}, height=700)
-            ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"geo_{gv}_{st.session_state.map_key}")
+            ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"map_{gv}_{st.session_state.map_key}")
+            
+            # IMPROVED SINGLE-CLICK LOGIC
             if ev and ev.get("selection") and ev["selection"].get("points"):
-                raw = ev["selection"]["points"][0]["location"]
-                if target == 'Canada': inv = {v: k for k, v in ca_name_map.items()}; st.session_state.selected_state = inv.get(raw, raw)
-                else: st.session_state.selected_state = raw
-                st.rerun()
+                raw_loc = ev["selection"]["points"][0]["location"]
+                new_sel = ca_name_map.get(raw_loc, raw_loc) if target == 'Canada' else raw_loc
+                # Map back from Name to Code for Canada data filtering
+                if target == 'Canada': inv = {v: k for k, v in ca_name_map.items()}; new_sel = inv.get(raw_loc, raw_loc)
+                
+                if st.session_state.selected_state != new_sel:
+                    st.session_state.selected_state = new_sel; st.rerun()
 
         if st.session_state.selected_state:
             with col_f:
@@ -204,7 +205,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     st.session_state.selected_state = None; st.session_state.map_key += 1; st.rerun()
                 
                 s_of = c_data[c_data['State'] == sel]
-                s_from = geo_df[geo_df[dx_st_col] == sel]
+                s_fr = geo_df[geo_df[dx_st_col] == sel]
 
                 # 1. MOST HEARD STATION
                 st.markdown('<div class="stat-header">MOST HEARD STATION</div>', unsafe_allow_html=True)
@@ -224,8 +225,8 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     of_dates = pd.to_datetime(s_of['Local_Date'])
                     st.markdown(f'<div class="stat-label">Start: {get_avg_date(of_dates.groupby(s_of["Local_Year"]).min())} | Peak: {get_avg_date(of_dates)} | End: {get_avg_date(of_dates.groupby(s_of["Local_Year"]).max())}</div>', unsafe_allow_html=True)
                     st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - DXers From This Region</div>', unsafe_allow_html=True)
-                    from_dates = pd.to_datetime(s_from['Local_Date'])
-                    st.markdown(f'<div class="stat-label">Start: {get_avg_date(from_dates.groupby(s_from["Local_Year"]).min())} | Peak: {get_avg_date(from_dates)} | End: {get_avg_date(from_dates.groupby(s_from["Local_Year"]).max())}</div>', unsafe_allow_html=True)
+                    from_dates = pd.to_datetime(s_fr['Local_Date'])
+                    st.markdown(f'<div class="stat-label">Start: {get_avg_date(from_dates.groupby(s_fr["Local_Year"]).min())} | Peak: {get_avg_date(from_dates)} | End: {get_avg_date(from_dates.groupby(s_fr["Local_Year"]).max())}</div>', unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
 
                 # 3. FURTHEST RECEPTION
@@ -237,15 +238,15 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
 
                 # 4. LOCAL DXER ACTIVITY
                 st.markdown('<div class="stat-header">LOCAL DXER ACTIVITY</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stat-val">{s_from["DXer"].nunique()} UNIQUE DXERS</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-val">{s_fr["DXer"].nunique()} UNIQUE DXERS</div>', unsafe_allow_html=True)
 
                 # 5. PATH ANALYSIS
                 st.markdown('<div class="stat-header">TOP RECEPTION PATHS</div>', unsafe_allow_html=True)
-                p_in = s_from[s_from['Country'].isin(['USA', 'Canada', 'Mexico'])].groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                p_in = s_fr[s_fr['Country'].isin(['USA', 'Canada', 'Mexico'])].groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 if not p_in.empty: st.dataframe(p_in, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
                 
                 st.markdown('<div class="stat-header">TOP INTERNATIONAL REACH</div>', unsafe_allow_html=True)
-                p_intl = s_from[~s_from['Country'].isin(['USA', 'Canada', 'Mexico'])].groupby('Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                p_intl = s_fr[~s_fr['Country'].isin(['USA', 'Canada', 'Mexico'])].groupby('Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 if not p_intl.empty: st.dataframe(p_intl, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
 
                 st.markdown('<div class="stat-header">TOP TRANSMISSION PATHS</div>', unsafe_allow_html=True)
