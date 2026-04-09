@@ -91,7 +91,6 @@ with st.sidebar:
 
 # 4. GLOBAL FILTERS
 if not st.session_state.full_screen:
-    st.image("SEDAP Banner.png", width=600)
     rk = f"v{st.session_state.reset_count}" 
     with st.expander(label="GLOBAL FILTERS", expanded=True):
         r1 = st.columns(5)
@@ -132,7 +131,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER (SACRED FOUNDATION)
+# 6. MODULE 2: ES-CLOUD TRACKER (RESTORED SACRED CONTROLS)
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -170,7 +169,7 @@ elif selected_page == "ES-CLOUD TRACKER":
             if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
-# 7. MODULE 3: GEOGRAPHIC ANALYSIS (TRUE NAME LOCKDOWN)
+# 7. MODULE 3: GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["Country Stats", "Canadian Stats", "Mexican Stats", "US States", "Distance Stats"], default="US States")
@@ -198,7 +197,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
 
     if gv == "US States": target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
     elif gv == "Canadian Stats": target, scope, loc_mode, gj_url, gj_key = 'Canada', 'north america', 'geojson-id', "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson", "properties.name"
-    elif gv == "Mexican Stats": target, scope, loc_mode, gj_url, gj_key = 'Mexico', 'north america', 'geojson-id', "https://raw.githubusercontent.com/angelnm789/mexico-states/master/mexico.json", "properties.name"
+    elif gv == "Mexican Stats": target, scope, loc_mode, gj_url, gj_key = 'Mexico', None, 'geojson-id', "https://raw.githubusercontent.com/isellsoap/mexico-geojson/master/mexico.json", "properties.name"
     else: target = None
 
     if target:
