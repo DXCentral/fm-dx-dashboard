@@ -5,6 +5,8 @@ import time
 import datetime
 import plotly.express as px
 import numpy as np
+import folium
+from streamlit_folium import st_folium
 from google.cloud import bigquery
 from google.oauth2 import service_account 
 
@@ -16,7 +18,7 @@ if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_region' not in st.session_state: st.session_state.selected_region = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 9500
+if 'map_key' not in st.session_state: st.session_state.map_key = 10000
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"] { display: none !important; } .stMain { padding: 0 !important; }</style>""", unsafe_allow_html=True)
@@ -102,11 +104,11 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_station, 'State':f_state
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. DASHBOARD
+# 5. DASHBOARD OVERVIEW
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
-    m[0].metric("Logs", f"{len(filt_df):,}"); m[1].metric("Stations", f"{filt_df['Station'].nunique():,}")
+    m[0].metric("Total Logs", f"{len(filt_df):,}"); m[1].metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
     m[2].metric("US States", filt_df[filt_df['Country']=='USA']['State'].nunique())
     m[3].metric("CA Prov", filt_df[filt_df['Country']=='Canada']['State'].nunique())
     m[4].metric("MX States", filt_df[filt_df['Country']=='Mexico']['State'].nunique())
@@ -122,8 +124,10 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     
     dx_st_col = next((c for c in filt_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
     mo_col, yr_col = next((c for c in filt_df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name'), next((c for c in filt_df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
+    dt_col, tm_col = next((c for c in filt_df.columns if 'Local' in c and 'Date' in c), 'Local_Date'), next((c for c in filt_df.columns if 'Local' in c and 'Time' in c), 'Local_Time')
     gs = [[0, 'rgb(100,0,0)'], [0.2, 'rgb(183,28,28)'], [0.5, 'rgb(211,47,47)'], [0.8, 'rgb(255,69,0)'], [1, 'rgb(255,165,0)']]
 
+    # LOGIC GATE: US MAP (PLOTLY) vs CAN/MEX (FOLIUM/SELECT)
     if gv == "US STATES":
         if not st.session_state.selected_region: col_m, col_f = st.columns([1, 0.001])
         else: col_m, col_f = st.columns([3, 1])
@@ -139,23 +143,22 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     elif gv in ["CANADIAN PROVINCES", "MEXICAN STATES"]:
         target_country = 'Canada' if gv == "CANADIAN PROVINCES" else 'Mexico'
         c_data = filt_df[filt_df['Country'] == target_country]
-        
-        # INTERACTIVE DRILL DOWN
         sel_name = st.selectbox(f"SELECT {target_country.upper()} REGION FOR INTEL", ["NONE"] + sorted(c_data['State'].dropna().unique().tolist()))
+        
         if sel_name == "NONE": col_m, col_f = st.columns([1, 0.001])
         else: 
             st.session_state.selected_region = sel_name
             col_m, col_f = st.columns([3, 1])
         
         with col_m:
-            # Scatter Plot Map for perfect border-less accuracy
-            fig = px.scatter_geo(c_data, lat=st_lat, lon=st_lon, color='State', hover_name='Station', scope='north america', template='plotly_dark')
-            if target_country == 'Canada': fig.update_geos(lataxis_range=[40, 75], lonaxis_range=[-140, -50], showcountries=True)
-            else: fig.update_geos(lataxis_range=[14, 33], lonaxis_range=[-118, -86], showcountries=True)
-            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', margin={"r":0,"t":0,"l":0,"b":0}, height=700)
-            st.plotly_chart(fig, use_container_width=True)
+            # FOLIUM MAP INTEGRATION
+            center = [56, -106] if target_country == 'Canada' else [23, -102]
+            m = folium.Map(location=center, zoom_start=4, tiles="CartoDB dark_matter")
+            for _, row in c_data.sample(n=min(len(c_data), 500)).iterrows():
+                folium.CircleMarker([row[st_lat], row[st_lon]], radius=2, color="#D32F2F", fill=True).add_to(m)
+            st_folium(m, width=1200, height=700)
 
-    # SHARED FLYOUT ENGINE
+    # SHARED FLYOUT ENGINE (FULL INTEL RESTORATION)
     if st.session_state.selected_region:
         with col_f:
             sel = st.session_state.selected_region
@@ -167,12 +170,23 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
 
             if not s_of.empty:
                 top = s_of.groupby(['Frequency', 'Station', 'City']).size().idxmax()
-                st.markdown(f'<div class="stat-header">MOST HEARD</div><div class="stat-val">{top[1]}</div><div class="stat-label">{top[0]} MHz • {top[2]}</div>', unsafe_allow_html=True)
+                st.markdown('<div class="stat-header">MOST HEARD STATION</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-val">{top[1]}</div><div class="stat-label">{top[0]} MHz • {top[2]} • {s_of.groupby(["Frequency", "Station", "City"]).size().max()} Logs</div>', unsafe_allow_html=True)
                 
-                st.markdown('<div class="stat-header">SEASON WINDOW</div>', unsafe_allow_html=True)
+                st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
+                m_c = s_of[mo_col].value_counts()
+                st.markdown(f'<div class="stat-val">{str(m_c.idxmax()).upper()}</div>', unsafe_allow_html=True)
+                
+                st.markdown('<div class="window-box">', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-label" style="color:#D32F2F">SIGNAL PROPAGATION WINDOW</div>', unsafe_allow_html=True)
                 of_dates = pd.to_datetime(s_of['Local_Date'])
                 st.markdown(f'<div class="stat-label">Start: {get_avg_date(of_dates.groupby(s_of["Local_Year"]).min())} | Peak: {get_avg_date(of_dates)} | End: {get_avg_date(of_dates.groupby(s_of["Local_Year"]).max())}</div>', unsafe_allow_html=True)
-                
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
+                f = s_of.sort_values(d_col, ascending=False).iloc[0]
+                st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div><div class="stat-label">{f["Station"]} by {f["DXer"]}</div>', unsafe_allow_html=True)
+
                 st.markdown('<div class="stat-header">TOP PATHS</div>', unsafe_allow_html=True)
                 p_in = s_fr.groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 st.dataframe(p_in, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
