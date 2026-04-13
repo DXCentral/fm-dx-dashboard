@@ -16,7 +16,7 @@ if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_state' not in st.session_state: st.session_state.selected_state = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 80000
+if 'map_key' not in st.session_state: st.session_state.map_key = 90000
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -181,6 +181,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     if 'last_gv' not in st.session_state or st.session_state.last_gv != gv:
         st.session_state.selected_state = None; st.session_state.last_gv = gv
 
+    # 🧹 DATA CLEANER & PARENT MAPPING
     geo_df = filt_df.copy()
     parent_map = {'Azores':'Portugal', 'Canary Islands':'Spain', 'Cayman Island':'Cayman Islands', 'Saint Pierre and Miquelon':'France'}
     geo_df['MapCountry'] = geo_df['Country'].replace(parent_map)
@@ -219,8 +220,8 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
             if ev and ev.get("selection") and ev["selection"].get("points"):
                 raw_loc = ev["selection"]["points"][0]["location"]
                 if target == 'Canada':
-                    ca_map = {'ON':'Ontario','QC':'Quebec','NS':'Nova Scotia','NB':'New Brunswick','MB':'Manitoba','BC':'British Columbia','PE':'Prince Edward Island','SK':'Saskatchewan','AB':'Alberta','NL':'Newfoundland and Labrador','NU':'Nunavut','NT':'Northwest Territories','YT':'Yukon'}
-                    inv = {v: k for k, v in ca_map.items()}; new_sel = inv.get(raw_loc, raw_loc)
+                    inv = {v: k for k, v in {'ON':'Ontario','QC':'Quebec','NS':'Nova Scotia','NB':'New Brunswick','MB':'Manitoba','BC':'British Columbia','PE':'Prince Edward Island','SK':'Saskatchewan','AB':'Alberta','NL':'Newfoundland and Labrador','NU':'Nunavut','NT':'Northwest Territories','YT':'Yukon'}.items()}
+                    new_sel = inv.get(raw_loc, raw_loc)
                 else: new_sel = raw_loc
                 if st.session_state.selected_state != new_sel: st.session_state.selected_state = new_sel; st.rerun()
 
@@ -237,20 +238,28 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     s_of = geo_df[geo_df['Country'] == target][geo_df['State'] == sel]
                     s_fr = geo_df[geo_df[dx_st_col] == sel]
 
+                # 🚀 TOP-TIER METRIC: TOTAL LOGS
                 st.markdown('<div class="stat-header">TOTAL LOGS IN DATASET</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
 
+                # MOST HEARD STATION
                 st.markdown('<div class="stat-header">MOST HEARD STATION</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     top_st = s_of.groupby(['Frequency', 'Station', 'City']).size().idxmax()
                     st.markdown(f'<div class="stat-val">{top_st[1]}</div><div class="stat-label">{top_st[0]} MHz • {top_st[2]} • {s_of.groupby(["Frequency", "Station", "City"]).size().max()} Logs</div>', unsafe_allow_html=True)
 
+                # PEAK SEASONALITY (WITH NEW LABELS)
                 st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     m_c, y_c = s_of[mo_col].value_counts(), s_of[yr_col].value_counts()
-                    st.markdown(f'<div class="stat-val">{str(m_c.idxmax()).upper()} ({m_c.max()})</div><div class="stat-val">{y_c.idxmax()} ({y_c.max()})</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-label">Peak Month</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{str(m_c.idxmax()).upper()} ({m_c.max()})</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-label">Peak Year</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{y_c.idxmax()} ({y_c.max()})</div>', unsafe_allow_html=True)
+                    
                     st.markdown('<div class="window-box">', unsafe_allow_html=True)
                     od = pd.to_datetime(s_of['Local_Date'])
+                    st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - Signals From Region</div>', unsafe_allow_html=True)
                     st.markdown(f'<div class="stat-label">Start: {get_avg_date(od.groupby(s_of["Local_Year"]).min())} | Peak: {get_avg_date(od)} | End: {get_avg_date(od.groupby(s_of["Local_Year"]).max())}</div>', unsafe_allow_html=True)
                     st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - DXers In Region</div>', unsafe_allow_html=True)
                     fd = pd.to_datetime(s_fr['Local_Date'])
@@ -273,6 +282,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 p_out = s_of[s_of['DXer_Country'].isin(['USA', 'Canada', 'Mexico'])].groupby('DXer_State_Prov').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 if not p_out.empty: st.dataframe(p_out, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
 
+                # SYNCHRONIZED TOP 5 STATIONS
                 st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(5)
