@@ -16,7 +16,7 @@ if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_state' not in st.session_state: st.session_state.selected_state = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 70000
+if 'map_key' not in st.session_state: st.session_state.map_key = 80000
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -86,8 +86,8 @@ if df.empty: st.stop()
 from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
-    selected_page = option_menu("DATA MODULES", ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "STATION & RDS IQ"], 
-        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "broadcast-pin"], default_index=0)
+    selected_page = option_menu("DATA MODULES", ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ"], 
+        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin"], default_index=0)
 
 # 4. GLOBAL FILTERS
 if not st.session_state.full_screen:
@@ -125,13 +125,13 @@ if selected_page == "DASHBOARD OVERVIEW":
     m = st.columns(7)
     m[0].metric("Total Logs", f"{len(filt_df):,}"); m[1].metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
     m[2].metric("US States", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
-    m[3].metric("CA Prov", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
-    m[4].metric("International", filt_df[~filt_df['Country'].isin(['USA', 'Canada'])]['Country'].nunique())
+    m[3].metric("Canadian Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
+    m[4].metric("Mexican States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
     m[5].metric("Countries", filt_df['Country'].nunique())
-    m[6].metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
+    m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER (RESTORED SACRED ENGINE)
+# 6. MODULE 2: ES-CLOUD TRACKER (SACRED FOUNDATION)
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -164,10 +164,13 @@ elif selected_page == "ES-CLOUD TRACKER":
         else:
             layers.append(pdk.Layer('LineLayer', data=render_df[[dx_lat, dx_lon, st_lat, st_lon]].dropna(), get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
         st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers, height=1000))
+        st.markdown("""<div class="watermark"><img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="width: 250px;"></div>""", unsafe_allow_html=True)
         if st.session_state.playing:
             conf = speed_sets[play_speed]
-            if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
-            else: st.session_state.playing = False; st.rerun()
+            if st.session_state.p_idx + conf['step'] < len(times):
+                st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
+            else:
+                st.session_state.playing = False; st.rerun()
 
 # 7. MODULE 3: GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
@@ -178,14 +181,12 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     if 'last_gv' not in st.session_state or st.session_state.last_gv != gv:
         st.session_state.selected_state = None; st.session_state.last_gv = gv
 
-    # 🧹 DATA CLEANER & PARENT MAPPING
     geo_df = filt_df.copy()
     parent_map = {'Azores':'Portugal', 'Canary Islands':'Spain', 'Cayman Island':'Cayman Islands', 'Saint Pierre and Miquelon':'France'}
     geo_df['MapCountry'] = geo_df['Country'].replace(parent_map)
     geo_df = geo_df[geo_df['State'] != 'AM']
     
     dx_st_col = next((c for c in geo_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
-    dx_co_col = next((c for c in geo_df.columns if 'DXer' in c and 'Country' in c), 'DXer_Country')
     mo_col, yr_col = next((c for c in geo_df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name'), next((c for c in geo_df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
     dt_col, tm_col = next((c for c in geo_df.columns if 'Local' in c and 'Date' in c), 'Local_Date'), next((c for c in geo_df.columns if 'Local' in c and 'Time' in c), 'Local_Time')
     gs = [[0, 'rgb(100,0,0)'], [0.2, 'rgb(183,28,28)'], [0.5, 'rgb(211,47,47)'], [0.8, 'rgb(255,69,0)'], [1, 'rgb(255,165,0)']]
@@ -236,11 +237,9 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     s_of = geo_df[geo_df['Country'] == target][geo_df['State'] == sel]
                     s_fr = geo_df[geo_df[dx_st_col] == sel]
 
-                # 🚀 TOP-TIER METRIC: TOTAL LOGS
                 st.markdown('<div class="stat-header">TOTAL LOGS IN DATASET</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
 
-                # FULL 10-POINT INTEL SUITE
                 st.markdown('<div class="stat-header">MOST HEARD STATION</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     top_st = s_of.groupby(['Frequency', 'Station', 'City']).size().idxmax()
@@ -274,7 +273,6 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 p_out = s_of[s_of['DXer_Country'].isin(['USA', 'Canada', 'Mexico'])].groupby('DXer_State_Prov').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 if not p_out.empty: st.dataframe(p_out, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
 
-                # SYNCHRONIZED TOP 5 STATIONS WITH RAW COUNTS
                 st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(5)
