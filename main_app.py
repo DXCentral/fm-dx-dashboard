@@ -91,7 +91,6 @@ with st.sidebar:
 
 # 4. GLOBAL FILTERS
 if not st.session_state.full_screen:
-    st.image("SEDAP Banner.png", width=600)
     rk = f"v{st.session_state.reset_count}" 
     with st.expander(label="GLOBAL FILTERS", expanded=True):
         r1 = st.columns(5)
@@ -127,12 +126,12 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[0].metric("Total Logs", f"{len(filt_df):,}"); m[1].metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
     m[2].metric("US States", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
     m[3].metric("CA Prov", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
-    m[4].metric("MX States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
+    m[4].metric("International", filt_df[~filt_df['Country'].isin(['USA', 'Canada'])]['Country'].nunique())
     m[5].metric("Countries", filt_df['Country'].nunique())
     m[6].metric("Max Distance", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER (RESTORED SACRED CONTROLS)
+# 6. MODULE 2: ES-CLOUD TRACKER (SACRED FOUNDATION)
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -170,7 +169,7 @@ elif selected_page == "ES-CLOUD TRACKER":
             if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
-# 7. MODULE 3: GEOGRAPHIC ANALYSIS (INTERNATIONAL PIVOT)
+# 7. MODULE 3: GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
@@ -179,12 +178,15 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     if 'last_gv' not in st.session_state or st.session_state.last_gv != gv:
         st.session_state.selected_state = None; st.session_state.last_gv = gv
 
-    # 🧹 DATA CLEANER
+    # 🧹 DATA CLEANER & PARENT MAPPING
     geo_df = filt_df.copy()
+    parent_map = {'Azores':'Portugal', 'Canary Islands':'Spain', 'Cayman Island':'Cayman Islands', 'Saint Pierre and Miquelon':'France'}
+    geo_df['MapCountry'] = geo_df['Country'].replace(parent_map)
     geo_df = geo_df[geo_df['State'] != 'AM']
     
     dx_st_col = next((c for c in geo_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
     mo_col, yr_col = next((c for c in geo_df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name'), next((c for c in geo_df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
+    dt_col, tm_col = next((c for c in geo_df.columns if 'Local' in c and 'Date' in c), 'Local_Date'), next((c for c in geo_df.columns if 'Local' in c and 'Time' in c), 'Local_Time')
     gs = [[0, 'rgb(100,0,0)'], [0.2, 'rgb(183,28,28)'], [0.5, 'rgb(211,47,47)'], [0.8, 'rgb(255,69,0)'], [1, 'rgb(255,165,0)']]
 
     if gv == "US States": target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
@@ -196,19 +198,17 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_state else st.columns([1, 0.001])
         with col_m:
             if target == 'World':
-                counts = geo_df.groupby('Country').size().reset_index(name='Logs')
-                fig = px.choropleth(counts, locations='Country', locationmode="country names", color='Logs', color_continuous_scale=gs, template="plotly_dark")
-                # Zoom Range for Americas + Western Europe
+                counts = geo_df.groupby('MapCountry').size().reset_index(name='Logs')
+                fig = px.choropleth(counts, locations='MapCountry', locationmode="country names", color='Logs', color_continuous_scale=gs, template="plotly_dark")
                 fig.update_geos(projection_type="equirectangular", visible=True, resolution=50, showcountries=True, countrycolor="#444", lataxis_range=[-45, 75], lonaxis_range=[-130, 20])
             else:
                 c_data = geo_df[geo_df['Country'] == target]
                 if target == 'Canada':
                     ca_map = {'ON':'Ontario','QC':'Quebec','NS':'Nova Scotia','NB':'New Brunswick','MB':'Manitoba','BC':'British Columbia','PE':'Prince Edward Island','SK':'Saskatchewan','AB':'Alberta','NL':'Newfoundland and Labrador','NU':'Nunavut','NT':'Northwest Territories','YT':'Yukon'}
-                    c_data['MapState'] = c_data['State'].map(ca_map)
-                else: c_data['MapState'] = c_data['State']
-                
-                counts = c_data.groupby('MapState').size().reset_index(name='Logs').dropna()
-                fig = px.choropleth(counts, geojson=gj_url, locations='MapState', featureidkey=gj_key, locationmode=loc_mode, color='Logs', scope=scope, color_continuous_scale=gs, template="plotly_dark")
+                    c_data['MapLoc'] = c_data['State'].map(ca_map)
+                else: c_data['MapLoc'] = c_data['State']
+                counts = c_data.groupby('MapLoc').size().reset_index(name='Logs').dropna()
+                fig = px.choropleth(counts, geojson=gj_url, locations='MapLoc', featureidkey=gj_key, locationmode=loc_mode, color='Logs', scope=scope, color_continuous_scale=gs, template="plotly_dark")
                 fig.update_geos(fitbounds="geojson", visible=True, showsubunits=True, subunitcolor="#333")
             
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black'), margin={"r":0,"t":0,"l":0,"b":0}, height=750)
@@ -218,8 +218,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 raw_loc = ev["selection"]["points"][0]["location"]
                 if target == 'Canada':
                     ca_map = {'ON':'Ontario','QC':'Quebec','NS':'Nova Scotia','NB':'New Brunswick','MB':'Manitoba','BC':'British Columbia','PE':'Prince Edward Island','SK':'Saskatchewan','AB':'Alberta','NL':'Newfoundland and Labrador','NU':'Nunavut','NT':'Northwest Territories','YT':'Yukon'}
-                    inv = {v: k for k, v in ca_map.items()}
-                    new_sel = inv.get(raw_loc, raw_loc)
+                    inv = {v: k for k, v in ca_map.items()}; new_sel = inv.get(raw_loc, raw_loc)
                 else: new_sel = raw_loc
                 if st.session_state.selected_state != new_sel: st.session_state.selected_state = new_sel; st.rerun()
 
@@ -230,10 +229,10 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 if st.button("❌ CLEAR SELECTION", use_container_width=True): st.session_state.selected_state = None; st.session_state.map_key += 1; st.rerun()
                 
                 if target == 'World': 
-                    s_of = geo_df[geo_df['Country'] == sel]
+                    s_of = geo_df[geo_df['MapCountry'] == sel]
                     s_fr = geo_df[geo_df['DXer_Country'] == sel]
                 else:
-                    s_of = c_data[c_data['State'] == sel]
+                    s_of = geo_df[geo_df['Country'] == target][geo_df['State'] == sel]
                     s_fr = geo_df[geo_df[dx_st_col] == sel]
 
                 # FULL 10-POINT INTEL SUITE
@@ -247,7 +246,6 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     m_c, y_c = s_of[mo_col].value_counts(), s_of[yr_col].value_counts()
                     st.markdown(f'<div class="stat-val">{str(m_c.idxmax()).upper()} ({m_c.max()})</div><div class="stat-val">{y_c.idxmax()} ({y_c.max()})</div>', unsafe_allow_html=True)
                     st.markdown('<div class="window-box">', unsafe_allow_html=True)
-                    st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - Signals From Region</div>', unsafe_allow_html=True)
                     od = pd.to_datetime(s_of['Local_Date'])
                     st.markdown(f'<div class="stat-label">Start: {get_avg_date(od.groupby(s_of["Local_Year"]).min())} | Peak: {get_avg_date(od)} | End: {get_avg_date(od.groupby(s_of["Local_Year"]).max())}</div>', unsafe_allow_html=True)
                     st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - DXers In Region</div>', unsafe_allow_html=True)
@@ -267,15 +265,17 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 p_in = s_fr[s_fr['Country'].isin(['USA', 'Canada', 'Mexico'])].groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 if not p_in.empty: st.dataframe(p_in, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
                 
-                st.markdown('<div class="stat-header">TOP INTERNATIONAL REACH</div>', unsafe_allow_html=True)
-                p_intl = s_fr[~s_fr['Country'].isin(['USA', 'Canada', 'Mexico'])].groupby('Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
-                if not p_intl.empty: st.dataframe(p_intl, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
-
                 st.markdown('<div class="stat-header">TOP TRANSMISSION PATHS</div>', unsafe_allow_html=True)
                 p_out = s_of[s_of['DXer_Country'].isin(['USA', 'Canada', 'Mexico'])].groupby('DXer_State_Prov').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 if not p_out.empty: st.dataframe(p_out, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
 
+                # REFINED TOP 5 STATIONS WITH RAW NUMBERS
                 st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
                 if not s_of.empty:
-                    t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
-                    st.dataframe(t5, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
+                    t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(5)
+                    t5['Meter'] = t5['Logs']
+                    st.dataframe(t5, column_config={
+                        "Frequency": "MHz",
+                        "Logs": st.column_config.NumberColumn("Logs", format="%d"),
+                        "Meter": st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['Logs'].max() if not t5.empty else 100))
+                    }, hide_index=True)
