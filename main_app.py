@@ -17,7 +17,7 @@ if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_state' not in st.session_state: st.session_state.selected_state = None
 if 'selected_tier' not in st.session_state: st.session_state.selected_tier = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 200000
+if 'map_key' not in st.session_state: st.session_state.map_key = 250000
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -77,11 +77,12 @@ def load_data():
         df['Date_Obj'], df['Time_Str'] = pd.to_datetime(df['Local_Date']).dt.date, pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
         dist_col = [c for c in df.columns if 'Distance' in c and 'mi' in c][0]
         dd_col = [c for c in df.columns if 'Distance' in c and 'Distribution' in c][0]
-        return df, df['Date_Obj'].max(), dist_col, dd_col, dx_lat, dx_lon, st_lat, st_lon
+        dx_loc_col = l_dx
+        return df, df['Date_Obj'].max(), dist_col, dd_col, dx_lat, dx_lon, st_lat, st_lon, dx_loc_col
     except Exception as e:
-        st.error(f"Link Failure: {e}"); return pd.DataFrame(), None, "Distance", "Distance_Distribution", None, None, None, None
+        st.error(f"Link Failure: {e}"); return pd.DataFrame(), None, "Distance", "Distance_Distribution", None, None, None, None, "DXer_Location"
 
-df, last_date, d_col, dd_col, dx_lat, dx_lon, st_lat, st_lon = load_data()
+df, last_date, d_col, dd_col, dx_lat, dx_lon, st_lat, st_lon, dx_loc_col = load_data()
 if df.empty: st.stop()
 
 # 3. SIDEBAR NAVIGATION
@@ -183,27 +184,37 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     geo_df = geo_df[geo_df['State'] != 'AM']
     dx_st_col = next((c for c in geo_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
     mo_col, yr_col = next((c for c in geo_df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name'), next((c for c in geo_df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
-    gs = [[0, '#640000'], [0.2, '#D32F2F'], [0.5, '#FF4500'], [0.8, '#FFA500'], [1, '#FFFF00']]
+    gs = [[0, '#640000'], [0.25, '#D32F2F'], [0.5, '#FF4500'], [0.75, '#FFA500'], [1, '#FFFF00']]
 
     # --- DISTANCE STATS MODULE ---
     if gv == "Distance Stats":
-        col_m, col_f = st.columns([3, 1]) if st.session_state.selected_tier else st.columns([1, 0.001])
+        f_dx_loc = st.selectbox("Focus on DXer Location", ["All Locations"] + sorted(geo_df[dx_loc_col].dropna().unique().tolist()))
+        col_m, col_f = st.columns([3, 1]) if st.session_state.selected_tier or f_dx_loc != "All Locations" else st.columns([1, 0.001])
+        
         with col_m:
+            if f_dx_loc != "All Locations":
+                st.markdown(f"### DXER REACH MAP: {f_dx_loc}")
+                reach_df = geo_df[geo_df[dx_loc_col] == f_dx_loc]
+                dx_center = [reach_df[dx_lon].iloc[0], reach_df[dx_lat].iloc[0]]
+                layers = []
+                tier_colors = {'Short-Haul': [255, 255, 255], 'Medium-Haul': [255, 165, 0], 'Long-Haul': [211, 47, 47], 'Double-Hop': [255, 255, 0]}
+                for t, rgb in tier_colors.items():
+                    t_df = reach_df[reach_df[dd_col] == t]
+                    if not t_df.empty: layers.append(pdk.Layer('ScatterplotLayer', data=t_df, get_position=f'[{st_lon}, {st_lat}]', get_color=rgb + [45], get_radius=70000, pickable=True))
+                layers.append(pdk.Layer('ScatterplotLayer', data=reach_df, get_position=f'[{dx_lon}, {dx_lat}]', get_color=[255, 0, 0, 255], get_radius=20000))
+                st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=dx_center[1], longitude=dx_center[0], zoom=4.5), layers=layers, height=600))
+            
             st.markdown("### DISTANCE DISTRIBUTION HUB")
             d_counts = geo_df.groupby(dd_col).size().reset_index(name='Logs').dropna().sort_values('Logs', ascending=False)
-            if not d_counts.empty:
-                fig_hub = px.bar(d_counts, x='Logs', y=dd_col, orientation='h', color='Logs', color_continuous_scale=gs, template="plotly_dark")
-                fig_hub.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=400, showlegend=False, xaxis=dict(showgrid=False), yaxis=dict(showgrid=False))
-                ev_hub = st.plotly_chart(fig_hub, use_container_width=True, on_select="rerun", key="dist_hub")
-                if ev_hub and ev_hub.get("selection") and ev_hub["selection"].get("points"):
-                    nt = ev_hub["selection"]["points"][0]["y"]
-                    if st.session_state.selected_tier != nt: st.session_state.selected_tier = nt; st.rerun()
+            fig_hub = px.bar(d_counts, x='Logs', y=dd_col, orientation='h', color='Logs', color_continuous_scale=gs, template="plotly_dark")
+            fig_hub.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=400, showlegend=False, xaxis=dict(showgrid=False), yaxis=dict(showgrid=False))
+            ev_hub = st.plotly_chart(fig_hub, use_container_width=True, on_select="rerun", key="dist_hub")
+            if ev_hub and ev_hub.get("selection") and ev_hub["selection"].get("points"):
+                nt = ev_hub["selection"]["points"][0]["y"]; st.session_state.selected_tier = nt; st.rerun()
 
             st.markdown("### THE SEASONALITY PULSE")
-            st.markdown('<div class="stat-label">Share of Skip Types by Month</div>', unsafe_allow_html=True)
             pulse_data = geo_df.groupby(['Local_Month', dd_col]).size().reset_index(name='Logs')
-            fig_pulse = px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', color_discrete_sequence=['#D32F2F', '#FFA500', '#FFFFFF', '#888888'], template="plotly_dark")
-            fig_pulse.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=450, margin=dict(t=20))
+            fig_pulse = px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', template="plotly_dark")
             st.plotly_chart(fig_pulse, use_container_width=True)
 
         if st.session_state.selected_tier:
@@ -216,17 +227,11 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
                 st.markdown('<div class="stat-header">LIKELIHOOD SCORE</div>', unsafe_allow_html=True)
                 perc = (s_of['DXer'].nunique() / geo_df['DXer'].nunique()) * 100
-                st.markdown(f'<div class="stat-val">{perc:.1f}%</div><div class="stat-label">Of all DXers have caught this tier</div>', unsafe_allow_html=True)
-                st.markdown('<div class="stat-header">TIER KINGS (TOP DXERS)</div>', unsafe_allow_html=True)
-                kings = s_of.groupby('DXer').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
-                st.dataframe(kings, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True, use_container_width=True)
+                st.markdown(f'<div class="stat-val">{perc:.1f}%</div><div class="stat-label">Of DXers have caught this</div>', unsafe_allow_html=True)
+                st.markdown('<div class="stat-header">TIER KINGS</div>', unsafe_allow_html=True)
+                st.dataframe(s_of.groupby('DXer').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
                 st.markdown('<div class="stat-header">ORIGIN HOTSPOTS</div>', unsafe_allow_html=True)
-                spots = s_of.groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
-                st.dataframe(spots, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True, use_container_width=True)
-                st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
-                t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(5)
-                t5['Meter'] = t5['Logs']
-                st.dataframe(t5, column_config={"Frequency":"MHz", "Logs":st.column_config.NumberColumn("Logs", format="%d"), "Meter":st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['Logs'].max() if not t5.empty else 100))}, hide_index=True)
+                st.dataframe(s_of.groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
 
     # --- MAP MODULES (US / CA / INTERNATIONAL) ---
     else:
@@ -269,15 +274,12 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 if target == 'World': s_of, s_fr = geo_df[geo_df['MapCountry'] == sel], geo_df[geo_df['DXer_Country'] == sel]
                 else: s_of, s_fr = geo_df[geo_df['Country'] == target][geo_df['State'] == sel], geo_df[geo_df[dx_st_col] == sel]
                 
-                # HERO METRIC
                 st.markdown('<div class="stat-header">TOTAL LOGS IN DATASET</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
-                
                 if not s_of.empty:
                     top_st = s_of.groupby(['Frequency', 'Station', 'City']).size().idxmax()
                     st.markdown('<div class="stat-header">MOST HEARD STATION</div>', unsafe_allow_html=True)
                     st.markdown(f'<div class="stat-val">{top_st[1]}</div><div class="stat-label">{top_st[0]} MHz • {top_st[2]} • {s_of.groupby(["Frequency", "Station", "City"]).size().max()} Logs</div>', unsafe_allow_html=True)
-                
                 st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     m_c, y_c = s_of[mo_col].value_counts(), s_of[yr_col].value_counts()
@@ -288,23 +290,16 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - DXers In Region</div>', unsafe_allow_html=True)
                     fd = pd.to_datetime(s_fr['Local_Date']); st.markdown(f'<div class="stat-label">Start: {get_avg_date(fd.groupby(s_fr["Local_Year"]).min())} | Peak: {get_avg_date(fd)} | End: {get_avg_date(fd.groupby(s_fr["Local_Year"]).max())}</div>', unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
-
                 st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     f = s_of.sort_values(d_col, ascending=False).iloc[0]
                     st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div><div class="stat-label">{f["Station"]} by {f["DXer"]}</div>', unsafe_allow_html=True)
-
                 st.markdown('<div class="stat-header">LOCAL DXER ACTIVITY</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-val">{s_fr["DXer"].nunique()} UNIQUE DXERS</div>', unsafe_allow_html=True)
-
                 st.markdown('<div class="stat-header">TOP RECEPTION PATHS</div>', unsafe_allow_html=True)
-                p_in = s_fr.groupby('State' if target != 'World' else 'Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
-                st.dataframe(p_in, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
-
+                st.dataframe(s_fr.groupby('State' if target != 'World' else 'Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
                 st.markdown('<div class="stat-header">TOP TRANSMISSION PATHS</div>', unsafe_allow_html=True)
-                p_out = s_of.groupby(dx_st_col if target != 'World' else 'DXer_Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
-                st.dataframe(p_out, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
-
+                st.dataframe(s_of.groupby(dx_st_col if target != 'World' else 'DXer_Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
                 st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(5)
