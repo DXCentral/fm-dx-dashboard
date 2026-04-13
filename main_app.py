@@ -17,7 +17,7 @@ if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_state' not in st.session_state: st.session_state.selected_state = None
 if 'selected_tier' not in st.session_state: st.session_state.selected_tier = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 150000
+if 'map_key' not in st.session_state: st.session_state.map_key = 200000
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -76,8 +76,8 @@ def load_data():
         df['Mid_Lat'], df['Mid_Lon'] = (df[dx_lat] + df[st_lat]) / 2, (df[dx_lon] + df[st_lon]) / 2
         df['Date_Obj'], df['Time_Str'] = pd.to_datetime(df['Local_Date']).dt.date, pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
         dist_col = [c for c in df.columns if 'Distance' in c and 'mi' in c][0]
-        dist_dist_col = [c for c in df.columns if 'Distance' in c and 'Distribution' in c][0]
-        return df, df['Date_Obj'].max(), dist_col, dist_dist_col, dx_lat, dx_lon, st_lat, st_lon
+        dd_col = [c for c in df.columns if 'Distance' in c and 'Distribution' in c][0]
+        return df, df['Date_Obj'].max(), dist_col, dd_col, dx_lat, dx_lon, st_lat, st_lon
     except Exception as e:
         st.error(f"Link Failure: {e}"); return pd.DataFrame(), None, "Distance", "Distance_Distribution", None, None, None, None
 
@@ -123,7 +123,7 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state, '
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULE 1: DASHBOARD OVERVIEW (LOCKED)
+# 5. MODULE 1: DASHBOARD OVERVIEW
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
@@ -135,7 +135,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER (LOCKED)
+# 6. MODULE 2: ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -183,9 +183,9 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     geo_df = geo_df[geo_df['State'] != 'AM']
     dx_st_col = next((c for c in geo_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
     mo_col, yr_col = next((c for c in geo_df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name'), next((c for c in geo_df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
-    gs = [[0, 'rgb(100,0,0)'], [0.2, 'rgb(183,28,28)'], [0.5, 'rgb(211,47,47)'], [0.8, 'rgb(255,69,0)'], [1, 'rgb(255,165,0)']]
+    gs = [[0, '#640000'], [1, '#D32F2F']]
 
-    # --- DISTANCE HUB (PART 1) ---
+    # --- DISTANCE STATS LOGIC ---
     if gv == "Distance Stats":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_tier else st.columns([1, 0.001])
         with col_m:
@@ -211,28 +211,28 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 tier = st.session_state.selected_tier
                 st.markdown(f"### {tier.upper()} INTEL")
                 if st.button("❌ CLEAR SELECTION", key="cl_dst", use_container_width=True): st.session_state.selected_tier = None; st.rerun()
-                s_tier = geo_df[geo_df[dd_col] == tier]
+                s_of = geo_df[geo_df[dd_col] == tier]
                 st.markdown('<div class="stat-header">TOTAL LOGS IN TIER</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stat-val">{len(s_tier):,}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
                 st.markdown('<div class="stat-header">LIKELIHOOD SCORE</div>', unsafe_allow_html=True)
-                perc = (s_tier['DXer'].nunique() / geo_df['DXer'].nunique()) * 100
+                perc = (s_of['DXer'].nunique() / geo_df['DXer'].nunique()) * 100
                 st.markdown(f'<div class="stat-val">{perc:.1f}%</div><div class="stat-label">Of all DXers have caught this tier</div>', unsafe_allow_html=True)
                 st.markdown('<div class="stat-header">TIER KINGS (TOP DXERS)</div>', unsafe_allow_html=True)
-                kings = s_tier.groupby('DXer').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                kings = s_of.groupby('DXer').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 st.dataframe(kings, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True, use_container_width=True)
                 st.markdown('<div class="stat-header">ORIGIN HOTSPOTS</div>', unsafe_allow_html=True)
-                spots = s_tier.groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                spots = s_of.groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 st.dataframe(spots, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True, use_container_width=True)
                 st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
-                t5 = s_tier.groupby(['Frequency', 'Station']).size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(5)
+                t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(5)
                 t5['Meter'] = t5['Logs']
                 st.dataframe(t5, column_config={"Frequency":"MHz", "Logs":st.column_config.NumberColumn("Logs", format="%d"), "Meter":st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['Logs'].max() if not t5.empty else 100))}, hide_index=True)
 
-    # --- MAPS (PART 2) ---
+    # --- MAPS (RESTORED EXPLICIT LOGIC) ---
     else:
-        if gv == "US States": target, loc_mode, gj_url, gj_key = 'USA', 'USA-states', None, None
-        elif gv == "Canadian Stats": target, loc_mode, gj_url, gj_key = 'Canada', 'geojson-id', "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson", "properties.name"
-        elif gv == "International Stats": target, loc_mode, gj_url, gj_key = 'World', 'country names', None, None
+        if gv == "US States": target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
+        elif gv == "Canadian Stats": target, scope, loc_mode, gj_url, gj_key = 'Canada', 'north america', 'geojson-id', "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson", "properties.name"
+        elif gv == "International Stats": target, scope, loc_mode, gj_url, gj_key = 'World', 'world', 'country names', None, None
         
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_state else st.columns([1, 0.001])
         with col_m:
@@ -249,8 +249,8 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     c_data['MapLoc'] = c_data['State'].map(cam)
                 else: c_data['MapLoc'] = c_data['State']
                 counts = c_data.groupby('MapLoc').size().reset_index(name='Logs').dropna()
-                fig = px.choropleth(counts, geojson=gj_url, locations='MapLoc', featureidkey=gj_key, locationmode=loc_mode, color='Logs', color_continuous_scale=gs, template="plotly_dark")
-                fig.update_geos(fitbounds="geojson" if target != 'USA' else None, visible=True, showsubunits=True, subunitcolor="#333")
+                fig = px.choropleth(counts, geojson=gj_url, locations='MapLoc', featureidkey=gj_key, locationmode=loc_mode, color='Logs', scope=scope, color_continuous_scale=gs, template="plotly_dark")
+                if target == 'Canada': fig.update_geos(fitbounds="locations", visible=True, showsubunits=True, subunitcolor="#333")
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black'), margin={"r":0,"t":0,"l":0,"b":0}, height=750)
             ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"m_{gv}_{st.session_state.map_key}")
             if ev and ev.get("selection") and ev["selection"].get("points"):
@@ -297,11 +297,11 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 st.markdown(f'<div class="stat-val">{s_fr["DXer"].nunique()} UNIQUE DXERS</div>', unsafe_allow_html=True)
 
                 st.markdown('<div class="stat-header">TOP RECEPTION PATHS</div>', unsafe_allow_html=True)
-                p_in = s_fr.groupby('Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                p_in = s_fr.groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 st.dataframe(p_in, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
 
                 st.markdown('<div class="stat-header">TOP TRANSMISSION PATHS</div>', unsafe_allow_html=True)
-                p_out = s_of.groupby('DXer_Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                p_out = s_of.groupby(dx_st_col).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 st.dataframe(p_out, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
 
                 st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
