@@ -16,7 +16,7 @@ if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
 if 'playing' not in st.session_state: st.session_state.playing = False
 if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
 if 'selected_state' not in st.session_state: st.session_state.selected_state = None
-if 'map_key' not in st.session_state: st.session_state.map_key = 95000
+if 'map_key' not in st.session_state: st.session_state.map_key = 100000
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -86,8 +86,10 @@ if df.empty: st.stop()
 from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
-    selected_page = option_menu("DATA MODULES", ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "STATION & RDS IQ"], 
-        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow"], default_index=0)
+    selected_page = option_menu("DATA MODULES", 
+        ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ"], 
+        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin"], 
+        default_index=0)
 
 # 4. GLOBAL FILTERS
 if not st.session_state.full_screen:
@@ -131,7 +133,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER (SACRED FOUNDATION)
+# 6. MODULE 2: ES-CLOUD TRACKER (SACRED FOUNDATION + 3x SPEED)
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -146,7 +148,14 @@ elif selected_page == "ES-CLOUD TRACKER":
             date_range = st.date_input("Select Date Range", value=(avail_days[0], avail_days[-1]))
             if len(date_range) == 2: map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
             else: map_df = filt_df[filt_df['Date_Obj'] == date_range[0]]
-        speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "4x": {"delay": 0.01, "step": 4}}
+        
+        # RESTORED 3x SPEED SETTING
+        speed_sets = {
+            "1x": {"delay": 0.2, "step": 1}, 
+            "2x": {"delay": 0.1, "step": 2}, 
+            "3x": {"delay": 0.05, "step": 3},
+            "4x": {"delay": 0.01, "step": 4}
+        }
         play_speed = st.selectbox("Playback Speed", options=list(speed_sets.keys()), index=1)
         if st.button("📺 VIEW FULL SCREEN" if not st.session_state.full_screen else "❌ EXIT"): st.session_state.full_screen = not st.session_state.full_screen; st.rerun()
 
@@ -158,11 +167,13 @@ elif selected_page == "ES-CLOUD TRACKER":
         current_time = times[st.session_state.p_idx] if st.session_state.playing else hc2.select_slider("Time Control", options=["SHOW ALL"] + times, value="SHOW ALL")
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
         render_df = map_df if current_time == "SHOW ALL" else map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(current_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))]
+        
         layers = []
         if vm == "Es Cloud Location Heatmap":
             layers.append(pdk.Layer('HeatmapLayer', data=render_df[['Mid_Lat', 'Mid_Lon']].dropna(), get_position='[Mid_Lon, Mid_Lat]', radius_pixels=65, intensity=2.0, threshold=0.03, color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]))
         else:
             layers.append(pdk.Layer('LineLayer', data=render_df[[dx_lat, dx_lon, st_lat, st_lon]].dropna(), get_source_position=f'[{dx_lon}, {dx_lat}]', get_target_position=f'[{st_lon}, {st_lat}]', get_width=1, get_color=[211, 47, 47, 45]))
+        
         st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers, height=1000))
         st.markdown("""<div class="watermark"><img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="width: 250px;"></div>""", unsafe_allow_html=True)
         if st.session_state.playing:
@@ -220,10 +231,11 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
             if ev and ev.get("selection") and ev["selection"].get("points"):
                 raw_loc = ev["selection"]["points"][0]["location"]
                 if target == 'Canada':
-                    ca_map = {'ON':'Ontario','QC':'Quebec','NS':'Nova Scotia','NB':'New Brunswick','MB':'Manitoba','BC':'British Columbia','PE':'Prince Edward Island','SK':'Saskatchewan','AB':'Alberta','NL':'Newfoundland and Labrador','NU':'Nunavut','NT':'Northwest Territories','YT':'Yukon'}
-                    inv = {v: k for k, v in ca_map.items()}; new_sel = inv.get(raw_loc, raw_loc)
+                    inv = {v: k for k, v in {'ON':'Ontario','QC':'Quebec','NS':'Nova Scotia','NB':'New Brunswick','MB':'Manitoba','BC':'British Columbia','PE':'Prince Edward Island','SK':'Saskatchewan','AB':'Alberta','NL':'Newfoundland and Labrador','NU':'Nunavut','NT':'Northwest Territories','YT':'Yukon'}.items()}
+                    new_sel = inv.get(raw_loc, raw_loc)
                 else: new_sel = raw_loc
-                if st.session_state.selected_state != new_sel: st.session_state.selected_state = new_sel; st.rerun()
+                if st.session_state.selected_state != new_sel:
+                    st.session_state.selected_state = new_sel; st.rerun()
 
         if st.session_state.selected_state:
             with col_f:
@@ -238,7 +250,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     s_of = geo_df[geo_df['Country'] == target][geo_df['State'] == sel]
                     s_fr = geo_df[geo_df[dx_st_col] == sel]
 
-                # 🚀 HERO METRIC: TOTAL LOGS
+                # 🚀 TOP-TIER METRIC: TOTAL LOGS
                 st.markdown('<div class="stat-header">TOTAL LOGS IN DATASET</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
 
@@ -248,7 +260,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     top_st = s_of.groupby(['Frequency', 'Station', 'City']).size().idxmax()
                     st.markdown(f'<div class="stat-val">{top_st[1]}</div><div class="stat-label">{top_st[0]} MHz • {top_st[2]} • {s_of.groupby(["Frequency", "Station", "City"]).size().max()} Logs</div>', unsafe_allow_html=True)
 
-                # PEAK SEASONALITY (PRECISION POSITIONING)
+                # PEAK SEASONALITY (PRECISION ANCHORS)
                 st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     m_c, y_c = s_of[mo_col].value_counts(), s_of[yr_col].value_counts()
@@ -279,7 +291,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 p_out = s_of[s_of['DXer_Country'].isin(['USA', 'Canada', 'Mexico'])].groupby('DXer_State_Prov').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 if not p_out.empty: st.dataframe(p_out, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
 
-                # TOP 5 STATIONS
+                # TOP 5 STATIONS (SYNCED)
                 st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
                 if not s_of.empty:
                     t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(5)
