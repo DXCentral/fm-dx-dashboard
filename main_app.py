@@ -123,7 +123,7 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state, '
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULE 1: DASHBOARD OVERVIEW
+# 5. MODULE 1: DASHBOARD OVERVIEW (LOCKED)
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
@@ -135,7 +135,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER
+# 6. MODULE 2: ES-CLOUD TRACKER (LOCKED)
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -183,16 +183,16 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     geo_df = geo_df[geo_df['State'] != 'AM']
     dx_st_col = next((c for c in geo_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
     mo_col, yr_col = next((c for c in geo_df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name'), next((c for c in geo_df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
-    gs = [[0, '#640000'], [1, '#D32F2F']]
+    gs = [[0, '#640000'], [0.2, '#D32F2F'], [0.5, '#FF4500'], [0.8, '#FFA500'], [1, '#FFFF00']]
 
-    # --- DISTANCE STATS LOGIC ---
+    # --- DISTANCE STATS MODULE ---
     if gv == "Distance Stats":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_tier else st.columns([1, 0.001])
         with col_m:
             st.markdown("### DISTANCE DISTRIBUTION HUB")
             d_counts = geo_df.groupby(dd_col).size().reset_index(name='Logs').dropna().sort_values('Logs', ascending=False)
             if not d_counts.empty:
-                fig_hub = px.bar(d_counts, x='Logs', y=dd_col, orientation='horizontal', color='Logs', color_continuous_scale=gs, template="plotly_dark")
+                fig_hub = px.bar(d_counts, x='Logs', y=dd_col, orientation='h', color='Logs', color_continuous_scale=gs, template="plotly_dark")
                 fig_hub.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=400, showlegend=False, xaxis=dict(showgrid=False), yaxis=dict(showgrid=False))
                 ev_hub = st.plotly_chart(fig_hub, use_container_width=True, on_select="rerun", key="dist_hub")
                 if ev_hub and ev_hub.get("selection") and ev_hub["selection"].get("points"):
@@ -228,7 +228,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 t5['Meter'] = t5['Logs']
                 st.dataframe(t5, column_config={"Frequency":"MHz", "Logs":st.column_config.NumberColumn("Logs", format="%d"), "Meter":st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['Logs'].max() if not t5.empty else 100))}, hide_index=True)
 
-    # --- MAPS (RESTORED EXPLICIT LOGIC) ---
+    # --- MAP MODULES (US / CA / INTERNATIONAL) ---
     else:
         if gv == "US States": target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
         elif gv == "Canadian Stats": target, scope, loc_mode, gj_url, gj_key = 'Canada', 'north america', 'geojson-id', "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson", "properties.name"
@@ -250,7 +250,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 else: c_data['MapLoc'] = c_data['State']
                 counts = c_data.groupby('MapLoc').size().reset_index(name='Logs').dropna()
                 fig = px.choropleth(counts, geojson=gj_url, locations='MapLoc', featureidkey=gj_key, locationmode=loc_mode, color='Logs', scope=scope, color_continuous_scale=gs, template="plotly_dark")
-                if target == 'Canada': fig.update_geos(fitbounds="locations", visible=True, showsubunits=True, subunitcolor="#333")
+                if target != 'USA': fig.update_geos(fitbounds="locations", visible=True, showsubunits=True, subunitcolor="#333")
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black'), margin={"r":0,"t":0,"l":0,"b":0}, height=750)
             ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"m_{gv}_{st.session_state.map_key}")
             if ev and ev.get("selection") and ev["selection"].get("points"):
@@ -269,6 +269,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 if target == 'World': s_of, s_fr = geo_df[geo_df['MapCountry'] == sel], geo_df[geo_df['DXer_Country'] == sel]
                 else: s_of, s_fr = geo_df[geo_df['Country'] == target][geo_df['State'] == sel], geo_df[geo_df[dx_st_col] == sel]
                 
+                # HERO METRIC
                 st.markdown('<div class="stat-header">TOTAL LOGS IN DATASET</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
                 
@@ -297,11 +298,11 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 st.markdown(f'<div class="stat-val">{s_fr["DXer"].nunique()} UNIQUE DXERS</div>', unsafe_allow_html=True)
 
                 st.markdown('<div class="stat-header">TOP RECEPTION PATHS</div>', unsafe_allow_html=True)
-                p_in = s_fr.groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                p_in = s_fr.groupby('State' if target != 'World' else 'Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 st.dataframe(p_in, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
 
                 st.markdown('<div class="stat-header">TOP TRANSMISSION PATHS</div>', unsafe_allow_html=True)
-                p_out = s_of.groupby(dx_st_col).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                p_out = s_of.groupby(dx_st_col if target != 'World' else 'DXer_Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 st.dataframe(p_out, column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
 
                 st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
