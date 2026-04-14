@@ -102,8 +102,8 @@ from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     selected_page = option_menu("DATA MODULES", 
-        ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "STATION & RDS IQ"], 
-        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "broadcast-pin"], 
+        ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ"], 
+        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin"], 
         default_index=0)
 
 # 4. GLOBAL FILTERS
@@ -325,13 +325,9 @@ elif selected_page == "TEMPORAL TRENDS":
         if not m_df.empty:
             pivot = m_df.pivot_table(index=dom_col, columns=y_col, values='Station', aggfunc='count').fillna(0).astype(int)
             pivot = pivot.reindex(range(1, 32), fill_value=0)
-            
-            # CALCULATE SUMMARY COLS (ROUNDED)
             pivot['TOTAL LOGS'] = pivot.sum(axis=1)
             pivot['ACTIVE YEARS'] = (pivot.iloc[:, :-1] > 0).sum(axis=1)
             pivot['AVG PER YEAR'] = (pivot['TOTAL LOGS'] / pivot['ACTIVE YEARS']).replace([np.inf, -np.inf], 0).fillna(0).round(0).astype(int)
-            
-            # CALCULATE SUMMARY ROWS (ROUNDED)
             footer = pd.DataFrame(index=['TOTAL LOGS', 'ACTIVE DAYS', 'AVG PER DAY', 'DAYS >= 100', 'DAYS >= 500', 'DAYS >= 1000'], columns=pivot.columns)
             for col in pivot.columns:
                 if col in ['AVG PER YEAR']: continue
@@ -342,23 +338,17 @@ elif selected_page == "TEMPORAL TRENDS":
                 footer.at['DAYS >= 100', col] = int((data >= 100).sum())
                 footer.at['DAYS >= 500', col] = int((data >= 500).sum())
                 footer.at['DAYS >= 1000', col] = int((data >= 1000).sum())
+            final_pivot = pd.concat([pivot, footer]).reset_index().rename(columns={'index': 'DAY/METRIC'})
             
-            final_pivot = pd.concat([pivot, footer])
-            # Reset index to allow manual width config on the first column
-            final_pivot = final_pivot.reset_index().rename(columns={'index': 'DAY/METRIC'})
-            
-            def style_almanac_refined(df):
+            def style_almanac_robust(df):
                 styles = pd.DataFrame('', index=df.index, columns=df.columns)
-                # Calibrate scale ONLY on core year/day matrix
                 core_val_cols = [c for c in df.columns if c not in ['DAY/METRIC', 'TOTAL LOGS', 'ACTIVE YEARS', 'AVG PER YEAR']]
                 core_matrix = df.iloc[:31][core_val_cols]
                 max_daily = core_matrix.max().max() if not core_matrix.empty else 100
-                
                 for r_idx in df.index:
                     day_label = df.at[r_idx, 'DAY/METRIC']
                     for c in df.columns:
                         val = df.at[r_idx, c]
-                        # Apply heatmap ONLY to core days (1-31) and actual year columns
                         if isinstance(day_label, (int, np.integer)) and 1 <= day_label <= 31 and c in core_val_cols:
                             if val > 0:
                                 rel = min(val / max_daily, 1.0)
@@ -368,16 +358,10 @@ elif selected_page == "TEMPORAL TRENDS":
                                 else: bg, fg = '#640000', '#FFFFFF'
                                 styles.at[r_idx, c] = f'background-color: {bg}; color: {fg};'
                         else:
-                            # Frames (Summary Columns/Rows) are Locked Black
                             styles.at[r_idx, c] = 'background-color: #000000; color: #FFFFFF; font-weight: bold;'
                 return styles
 
-            st.dataframe(
-                final_pivot.style.apply(style_almanac_refined, axis=None), 
-                use_container_width=True, 
-                height=None, # Shows full table, no internal scroll
-                column_config={"DAY/METRIC": st.column_config.Column(width="medium")} # Prevents truncation
-            )
+            st.dataframe(final_pivot.style.apply(style_almanac_robust, axis=None), use_container_width=True, height=None, column_config={"DAY/METRIC": st.column_config.Column(width="large")})
         else:
             st.warning(f"No signal intelligence recorded for {sel_m_name} in current filter set.")
 
