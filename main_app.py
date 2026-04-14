@@ -160,8 +160,10 @@ elif selected_page == "ES-CLOUD TRACKER":
             map_df = filt_df[filt_df['Date_Obj'] == date_sel]
         else:
             date_range = st.date_input("Select Date Range", value=(avail_days[0], avail_days[-1]))
-            if len(date_range) == 2: map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
-            else: map_df = filt_df[filt_df['Date_Obj'] == date_range[0]]
+            if len(date_range) == 2:
+                map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
+            else:
+                map_df = filt_df[filt_df['Date_Obj'] == date_range[0]]
         speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "3x": {"delay": 0.05, "step": 3}, "4x": {"delay": 0.01, "step": 4}}
         play_speed = st.selectbox("Playback Speed", options=list(speed_sets.keys()), index=1)
         if st.button("📺 VIEW FULL SCREEN" if not st.session_state.full_screen else "❌ EXIT"): st.session_state.full_screen = not st.session_state.full_screen; st.rerun()
@@ -278,7 +280,12 @@ elif selected_page == "TEMPORAL TRENDS":
                 new_h = int(ev_hour["selection"]["points"][0]["x"]); st.session_state.selected_hour = new_h; st.rerun()
         if st.session_state.selected_hour is not None:
             with col_f:
-                h = st.session_state.selected_hour; st.markdown(f"### HOUR {h:02d}:00 INTEL"); if st.button("❌ CLEAR HOUR", key="cl_hr", use_container_width=True): st.session_state.selected_hour = None; st.session_state.hour_map_key += 1; st.rerun()
+                h = st.session_state.selected_hour
+                st.markdown(f"### HOUR {h:02d}:00 INTEL")
+                if st.button("❌ CLEAR HOUR", key="cl_hr", use_container_width=True):
+                    st.session_state.selected_hour = None
+                    st.session_state.hour_map_key += 1
+                    st.rerun()
                 s_h = filt_df[filt_df[h_col].astype(int) == int(h)]; st.markdown('<div class="stat-header">HOUR MISSION SUMMARY</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{len(s_h):,} LOGS</div><div class="stat-label">{(len(s_h)/len(filt_df))*100:.1f}% of Global Volume</div>', unsafe_allow_html=True)
                 if not s_h.empty:
                     st.markdown('<div class="stat-header">PEAK HOUR SYNC</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{str(s_h[m_name_col].mode().iloc[0]).upper()}</div><div class="stat-label">Most Active Month</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_h[y_col].mode().iloc[0]}</div><div class="stat-label">Most Active Year</div>', unsafe_allow_html=True)
@@ -297,7 +304,7 @@ elif selected_page == "TEMPORAL TRENDS":
             f_rows = ['TOTAL LOGS', 'ACTIVE DAYS', 'AVG PER DAY', 'DAYS >= 100', 'DAYS >= 500', 'DAYS >= 1000']; footer = pd.DataFrame(index=f_rows, columns=pivot.columns)
             for col in pivot.columns:
                 if col == 'AVG PER YEAR': continue
-                d = pivot.loc[1:31, col]; footer.at['TOTAL LOGS', col] = int(d.sum()); footer.at['ACTIVE DAYS', col] = int((d > 0).sum()); footer.at['AVG PER DAY', col] = int(round(d.sum() / (d > 0).sum() if (d > 0).sum() > 0 else 0)); footer.at['DAYS >= 100', col] = int((d >= 100).sum()); footer.at['DAYS >= 500', col] = int((d >= 500).sum()); footer.at['DAYS >= 1000', col] = int((d >= 1000).sum())
+                d = pivot.loc[1:31, col]; footer.at['TOTAL LOGS', col] = int(d.sum()); footer.at['ACTIVE DAYS', col] = int((d > 0).sum()); footer.at['AVG PER DAY', col] = int(round(d.sum() / (d > 0).sum() if (d > 0).sum() > 0 else 0)); footer.at['DAYS >= 100', col] = int((data >= 100).sum() if 'data' in locals() else (d >= 100).sum()); footer.at['DAYS >= 500', col] = int((d >= 500).sum()); footer.at['DAYS >= 1000', col] = int((d >= 1000).sum())
             full_matrix = pd.concat([pivot, footer]).fillna(0)
             core_years = [c for c in full_matrix.columns if c not in ['TOTAL LOGS', 'ACTIVE YEARS', 'AVG PER YEAR']]
             z_heat = full_matrix.copy().values.astype(float)
@@ -315,13 +322,17 @@ elif selected_page == "TEMPORAL TRENDS":
                     pt = ev_alm["selection"]["points"][0]
                     try:
                         d_val, y_val = int(pt["y"]), int(pt["x"])
-                        if 1 <= d_val <= 31: st.session_state.sel_alm_d, st.session_state.sel_alm_y = d_val, y_val; st.rerun()
+                        if 1 <= d_val <= 31:
+                            st.session_state.sel_alm_d, st.session_state.sel_alm_y = d_val, y_val
+                            st.rerun()
                     except: pass
             if st.session_state.sel_alm_d:
                 with ci:
                     d, yr = st.session_state.sel_alm_d, st.session_state.sel_alm_y
                     st.markdown(f"### 📡 {sel_m_name.upper()} {d}, {yr}")
-                    if st.button("❌ CLOSE REPORT", use_container_width=True): st.session_state.sel_alm_d = None; st.rerun()
+                    if st.button("❌ CLOSE REPORT", use_container_width=True):
+                        st.session_state.sel_alm_d = None
+                        st.rerun()
                     s_day = m_df[(m_df[dom_col] == d) & (m_df[y_col] == yr)]
                     if not s_day.empty:
                         st.markdown('<div class="stat-header">INTENSITY</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{len(s_day):,} LOGS</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_day["Frequency"].max()} MHz</div><div class="stat-label">MUF Reported</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_day["DXer"].nunique()}</div><div class="stat-label">Unique DXers</div>', unsafe_allow_html=True)
