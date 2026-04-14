@@ -63,7 +63,7 @@ def get_avg_date(dates_series):
         return (datetime.datetime(2024, 1, 1) + datetime.timedelta(days=int(ds.dt.dayofyear.mean()) - 1)).strftime('%b %d')
     except: return "N/A"
 
-# 2. DATA LOADING (THE INTELLIGENT JOIN ENGINE)
+# 2. DATA LOADING
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -264,7 +264,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 st.markdown(f'<div class="stat-header">TOTAL LOGS</div><div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
                 st.dataframe(s_of.groupby('DXer').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
 
-# 8. TEMPORAL TRENDS (MASTER RECONSTRUCTION)
+# 8. TEMPORAL TRENDS
 elif selected_page == "TEMPORAL TRENDS":
     st.header("Temporal Intelligence Suite")
     tv = st.pills("MODULE", options=["Yearly Trends", "Monthly Trends", "Hourly Analysis"], default="Hourly Analysis")
@@ -282,14 +282,15 @@ elif selected_page == "TEMPORAL TRENDS":
             fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=600, showlegend=False, xaxis=dict(title="Local Hour (0-23)", tickmode='array', tickvals=list(range(24)), range=[-0.5, 23.5], rangeslider=dict(visible=True)))
             ev_hour = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"h_chart_{st.session_state.hour_map_key}")
             st.caption("🕒 USE WHITE SLIDER ABOVE TO ZOOM TIMELINE VIEW")
-            if ev_hour and "selection" in ev_hour and ev_hour["selection"].get("points"):
+            if ev_hour and "selection" in ev_hour and ev_hour["selection"]["points"]:
                 new_h = int(ev_hour["selection"]["points"][0]["x"])
                 if st.session_state.selected_hour != new_h:
                     st.session_state.selected_hour = new_h
                     st.rerun()
         if st.session_state.selected_hour is not None:
             with col_f:
-                h = st.session_state.selected_hour; st.markdown(f"### HOUR {h:02d}:00 INTEL")
+                h = st.session_state.selected_hour
+                st.markdown(f"### HOUR {h:02d}:00 INTEL")
                 if st.button("❌ CLEAR HOUR", key="cl_hr", use_container_width=True):
                     st.session_state.selected_hour = None
                     st.session_state.hour_map_key += 1
@@ -297,7 +298,7 @@ elif selected_page == "TEMPORAL TRENDS":
                 s_h = filt_df[filt_df[h_col].astype(int) == int(h)]
                 st.markdown(f'<div class="stat-header">LOG VOLUME</div><div class="stat-val">{len(s_h):,}</div>', unsafe_allow_html=True)
                 if not s_h.empty:
-                    st.markdown(f'<div class="stat-header">PEAK MONTH</div><div class="stat-val">{s_h[m_name_col].mode().iloc[0].upper()}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-header">PEAK MONTH</div><div class="stat-val">{str(s_h[m_name_col].mode().iloc[0]).upper()}</div>', unsafe_allow_html=True)
                     st.markdown(f'<div class="stat-header">MUF REPORTED</div><div class="stat-val">{s_h["Frequency"].max()} MHz</div>', unsafe_allow_html=True)
                     st.markdown('<div class="stat-header">TOP PATHS</div>', unsafe_allow_html=True)
                     paths = s_h.groupby(['DXer_State_Prov', 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
@@ -307,9 +308,42 @@ elif selected_page == "TEMPORAL TRENDS":
     elif tv == "Monthly Trends":
         st.markdown("### MONTHLY LOG ALMANAC")
         st.caption("Select a month below to view the seasonal density matrix.")
-        sel_m_name = st.pills("SELECT MONTH", ["May", "June", "July", "August"], default="June")
-        m_df = filt_df[filt_df[m_name_col] == sel_m_name]
         
+        # 🧪 THE INTERACTIVE BRIDGE (V178)
+        with st.popover("🔍 ACTIVATE DAILY FORENSIC GRID"):
+            st.caption("👈 Click on any colored day to view a full tactical report of that day's activity.")
+            sel_m_name = st.pills("SELECT MONTH FOR GRID", ["May", "June", "July", "August"], default="June", key="grid_m_pill")
+            m_grid_df = filt_df[filt_df[m_name_col] == sel_m_name]
+            if not m_grid_df.empty:
+                pivot_grid = m_grid_df.pivot_table(index=dom_col, columns=y_col, values='Station', aggfunc='count').fillna(0).astype(int).reindex(range(1, 32), fill_value=0)
+                core_y = pivot_grid.columns.tolist()
+                max_grid = pivot_grid.max().max()
+                z_vals = np.where(pivot_grid > 0, pivot_grid, np.nan)
+                
+                fig_grid = go.Figure(data=go.Heatmap(
+                    z=z_vals, x=core_y, y=pivot_grid.index,
+                    colorscale=[[0, '#640000'], [0.2, '#D32F2F'], [0.5, '#FFA500'], [1, '#FFFF00']],
+                    showscale=False, hoverinfo='none', zmin=1, zmax=max_grid
+                ))
+                for i, r_name in enumerate(pivot_grid.index):
+                    for j, c_name in enumerate(core_y):
+                        val = pivot_grid.iloc[i, j]
+                        if val > 0:
+                            t_col = "black" if (val/max_grid > 0.8) else "white"
+                            fig_grid.add_annotation(x=c_name, y=r_name, text=str(int(val)), showarrow=False, font=dict(family="Oswald", color=t_col))
+                
+                fig_grid.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', height=800, margin=dict(l=0,r=0,t=40,b=0), xaxis=dict(side="top"), yaxis=dict(autorange="reversed", tickmode='linear'))
+                ev_grid = st.plotly_chart(fig_grid, use_container_width=True, on_select="rerun", key=f"grid_{st.session_state.alm_key}")
+                
+                if ev_grid and "selection" in ev_grid and ev_grid["selection"].get("points"):
+                    pt = ev_grid["selection"]["points"][0]
+                    st.session_state.sel_alm_d = int(pt["y"])
+                    st.session_state.sel_alm_y = int(pt["x"])
+                    st.rerun()
+
+        # --- MAIN SPREADSHEET (V178 RESTORED) ---
+        sel_m_name = st.pills("SELECT MONTH FOR SPREADSHEET", ["May", "June", "July", "August"], default="June", key="main_m_pill")
+        m_df = filt_df[filt_df[m_name_col] == sel_m_name]
         if not m_df.empty:
             pivot = m_df.pivot_table(index=dom_col, columns=y_col, values='Station', aggfunc='count').fillna(0).astype(int).reindex(range(1, 32), fill_value=0)
             pivot['TOTAL LOGS'] = pivot.sum(axis=1)
@@ -329,36 +363,6 @@ elif selected_page == "TEMPORAL TRENDS":
             
             final_pivot = pd.concat([pivot, footer]).reset_index().rename(columns={'index': 'DAY/METRIC'})
             
-            # --- INTERACTIVE FORENSIC GRID (POPOVER) ---
-            with st.popover("🔍 ACTIVATE DAILY FORENSIC GRID"):
-                st.caption("👈 Click on any colored day to view a full tactical report of that day's activity.")
-                core_years = [c for c in pivot.columns if c not in ['TOTAL LOGS', 'ACTIVE YEARS', 'AVG PER YEAR']]
-                max_d = pivot[core_years].max().max()
-                z_heat = np.where((pivot.index.isin(range(1,32))) & (pivot > 0), pivot[core_years], np.nan)
-                
-                fig_grid = go.Figure(data=go.Heatmap(
-                    z=z_heat, x=core_years, y=pivot.index,
-                    colorscale=[[0, '#640000'], [0.2, '#D32F2F'], [0.5, '#FFA500'], [1, '#FFFF00']],
-                    showscale=False, hoverinfo='none', zmin=1, zmax=max_d
-                ))
-                for i, r_name in enumerate(pivot.index):
-                    for j, c_name in enumerate(core_years):
-                        val = pivot.iloc[i, j]
-                        if val > 0:
-                            is_peak = (val/max_d > 0.8)
-                            t_col = "black" if is_peak else "white"
-                            fig_grid.add_annotation(x=c_name, y=r_name, text=str(int(val)), showarrow=False, font=dict(family="Oswald", color=t_col))
-                
-                fig_grid.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=900, margin=dict(l=0,r=0,t=40,b=0), xaxis=dict(side="top"), yaxis=dict(autorange="reversed", tickmode='linear'))
-                ev_grid = st.plotly_chart(fig_grid, use_container_width=True, on_select="rerun", key=f"grid_{st.session_state.alm_key}")
-                
-                if ev_grid and "selection" in ev_grid and ev_grid["selection"].get("points"):
-                    pt = ev_grid["selection"]["points"][0]
-                    st.session_state.sel_alm_d = int(pt["y"])
-                    st.session_state.sel_alm_y = int(pt["x"])
-                    st.rerun()
-
-            # --- MAIN SPREADSHEET DISPLAY ---
             def style_isolated_heat(df):
                 styles = pd.DataFrame('', index=df.index, columns=df.columns)
                 core_val_cols = [c for c in df.columns if c not in ['DAY/METRIC', 'TOTAL LOGS', 'ACTIVE YEARS', 'AVG PER YEAR']]
@@ -387,9 +391,8 @@ elif selected_page == "TEMPORAL TRENDS":
                     d, yr = st.session_state.sel_alm_d, st.session_state.sel_alm_y
                     st.markdown(f"### 📡 {sel_m_name.upper()} {d}, {yr}")
                     if st.button("❌ CLOSE REPORT", use_container_width=True):
-                        st.session_state.sel_alm_d = None
-                        st.rerun()
-                    s_day = m_df[(m_df[dom_col] == d) & (m_df[y_col] == yr)]
+                        st.session_state.sel_alm_d = None; st.rerun()
+                    s_day = m_grid_df[(m_grid_df[dom_col] == d) & (m_grid_df[y_col] == yr)]
                     if not s_day.empty:
                         st.markdown(f'<div class="stat-header">DAILY LOGS</div><div class="stat-val">{len(s_day):,}</div>', unsafe_allow_html=True)
                         st.markdown(f'<div class="stat-header">MUF REPORTED</div><div class="stat-val">{s_day["Frequency"].max()} MHz</div>', unsafe_allow_html=True)
@@ -399,6 +402,7 @@ elif selected_page == "TEMPORAL TRENDS":
                         st.markdown('<div class="stat-header">FURTHEST</div>', unsafe_allow_html=True); f = s_day.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div><div class="stat-label">{f["Station"]} by {f["DXer"]}</div>', unsafe_allow_html=True)
                         intl = s_day[~s_day['Country'].isin(['USA', 'Canada'])]
                         if not intl.empty: st.markdown('<div class="stat-header">TOP COUNTRIES</div>', unsafe_allow_html=True); st.dataframe(intl.groupby('Country').size().sort_values(ascending=False).head(3), hide_index=True)
+                    else: st.warning("No data.")
 
     elif tv == "Yearly Trends":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_year is not None else st.columns([1, 0.001])
@@ -415,7 +419,8 @@ elif selected_page == "TEMPORAL TRENDS":
                 st.rerun()
         if st.session_state.selected_year is not None:
             with col_f:
-                yr = st.session_state.selected_year; st.markdown(f"### {yr} SEASON INTEL")
+                yr = st.session_state.selected_year
+                st.markdown(f"### {yr} SEASON INTEL")
                 if st.button("❌ CLEAR YEAR", use_container_width=True):
                     st.session_state.selected_year = None
                     st.session_state.year_map_key += 1
