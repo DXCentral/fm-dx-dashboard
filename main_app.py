@@ -137,7 +137,7 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state, '
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULE 1: DASHBOARD OVERVIEW (LOCKED)
+# 5. DASHBOARD OVERVIEW (LOCKED)
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
@@ -149,7 +149,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER (LOCKED)
+# 6. ES-CLOUD TRACKER (LOCKED)
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -162,10 +162,8 @@ elif selected_page == "ES-CLOUD TRACKER":
             map_df = filt_df[filt_df['Date_Obj'] == date_sel]
         else:
             date_range = st.date_input("Select Date Range", value=(avail_days[0], avail_days[-1]))
-            if len(date_range) == 2:
-                map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
-            else:
-                map_df = filt_df[filt_df['Date_Obj'] == date_range[0]]
+            if len(date_range) == 2: map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
+            else: map_df = filt_df[filt_df['Date_Obj'] == date_range[0]]
         speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "3x": {"delay": 0.05, "step": 3}, "4x": {"delay": 0.01, "step": 4}}
         play_speed = st.selectbox("Playback Speed", options=list(speed_sets.keys()), index=1)
         if st.button("📺 VIEW FULL SCREEN" if not st.session_state.full_screen else "❌ EXIT"): 
@@ -175,10 +173,8 @@ elif selected_page == "ES-CLOUD TRACKER":
     if not map_df.empty:
         times = sorted(map_df['Time_Str'].dropna().unique().tolist())
         pb1, pb2, pb_txt = st.columns([1, 1, 3])
-        if pb1.button("▶ PLAY"): 
-            st.session_state.playing = True; st.session_state.p_idx = 0; st.rerun()
-        if pb2.button("⏹ STOP"): 
-            st.session_state.playing = False; st.rerun()
+        if pb1.button("▶ PLAY"): st.session_state.playing = True; st.session_state.p_idx = 0; st.rerun()
+        if pb2.button("⏹ STOP"): st.session_state.playing = False; st.rerun()
         current_time = times[st.session_state.p_idx] if st.session_state.playing else hc2.select_slider("Time Control", options=["SHOW ALL"] + times, value="SHOW ALL")
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
         render_df = map_df if current_time == "SHOW ALL" else map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(current_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))]
@@ -187,12 +183,10 @@ elif selected_page == "ES-CLOUD TRACKER":
         st.markdown("""<div class="watermark"><img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="width: 250px;"></div>""", unsafe_allow_html=True)
         if st.session_state.playing:
             conf = speed_sets[play_speed]
-            if st.session_state.p_idx + conf['step'] < len(times): 
-                st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
-            else: 
-                st.session_state.playing = False; st.rerun()
+            if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
+            else: st.session_state.playing = False; st.rerun()
 
-# 7. MODULE 3: GEOGRAPHIC ANALYSIS (LOCKED)
+# 7. GEOGRAPHIC ANALYSIS (LOCKED)
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
@@ -200,38 +194,31 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     geo_df = filt_df.copy(); geo_df = geo_df[geo_df['State'] != 'AM']
     dx_st_col = next((c for c in geo_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
     mo_col, yr_col = next((c for c in geo_df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name'), next((c for c in geo_df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
-    gs = [[0, '#640000'], [0.25, '#D32F2F'], [0.5, '#FF4500'], [0.75, '#FFA500'], [1, '#FFFF00']]
+    gs = [[0, '#640000'], [0.2, '#D32F2F'], [0.4, '#FF4500'], [0.7, '#FFA500'], [1, '#FFFF00']]
 
     if gv == "Distance Stats":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_tier else st.columns([1, 0.001])
         with col_m:
-            st.markdown("### DISTANCE DISTRIBUTION HUB"); st.caption("👈 Click on a Distance Distribution category for more details and statistics")
+            st.markdown("### DISTANCE DISTRIBUTION HUB"); st.caption("👈 Click on a Distance Distribution category for more details")
             d_counts = geo_df.groupby(dd_col).size().reset_index(name='Logs').dropna().sort_values('Logs', ascending=False)
             if not d_counts.empty:
                 fig_hub = px.bar(d_counts, x='Logs', y=dd_col, orientation='h', color='Logs', color_continuous_scale=gs, template="plotly_dark")
-                fig_hub.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=400, showlegend=False, xaxis=dict(showgrid=False), yaxis=dict(showgrid=False))
+                fig_hub.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=400, showlegend=False)
                 ev_hub = st.plotly_chart(fig_hub, use_container_width=True, on_select="rerun", key=f"dist_hub_{st.session_state.dist_map_key}")
                 if ev_hub and "selection" in ev_hub and ev_hub["selection"].get("points"):
                     nt = ev_hub["selection"]["points"][0]["y"]
                     if st.session_state.selected_tier != nt:
-                        st.session_state.selected_tier = nt
-                        st.rerun()
-            st.markdown("### THE SEASONALITY PULSE"); pulse_data = geo_df.groupby(['Local_Month', dd_col]).size().reset_index(name='Logs'); fig_pulse = px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', color_discrete_sequence=['#D32F2F', '#FFA500', '#FFFFFF', '#888888'], template="plotly_dark"); st.plotly_chart(fig_pulse, use_container_width=True)
-
+                        st.session_state.selected_tier = nt; st.rerun()
+            pulse_data = geo_df.groupby(['Local_Month', dd_col]).size().reset_index(name='Logs')
+            st.plotly_chart(px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', template="plotly_dark"), use_container_width=True)
         if st.session_state.selected_tier:
             with col_f:
-                tier = st.session_state.selected_tier
-                st.markdown(f"### {tier.upper()} INTEL")
+                tier = st.session_state.selected_tier; st.markdown(f"### {tier.upper()} INTEL")
                 if st.button("❌ CLEAR SELECTION", key="cl_dst", use_container_width=True):
-                    st.session_state.selected_tier = None
-                    st.session_state.dist_map_key += 1
-                    st.rerun()
+                    st.session_state.selected_tier = None; st.session_state.dist_map_key += 1; st.rerun()
                 s_of = geo_df[geo_df[dd_col] == tier]
-                st.markdown('<div class="stat-header">TOTAL LOGS IN TIER</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
-                st.markdown('<div class="stat-header">TIER KINGS</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-header">TOTAL LOGS</div><div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
                 st.dataframe(s_of.groupby('DXer').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
-
     else:
         if gv == "US States": target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
         elif gv == "Canadian Stats": target, scope, loc_mode, gj_url, gj_key = 'Canada', 'north america', 'geojson-id', "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson", "properties.name"
@@ -239,23 +226,33 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_state else st.columns([1, 0.001])
         with col_m:
             if target == 'World':
-                pm = {'Azores':'Portugal', 'Canary Islands':'Spain', 'Cayman Island':'Cayman Islands', 'Saint Pierre and Miquelon':'France'}; geo_df['MapCountry'] = geo_df['Country'].replace(pm); counts = geo_df.groupby('MapCountry').size().reset_index(name='Logs'); fig = px.choropleth(counts, locations='MapCountry', locationmode="country names", color='Logs', color_continuous_scale=gs, template="plotly_dark"); fig.update_geos(projection_type="equirectangular", visible=True, lataxis_range=[-45, 75], lonaxis_range=[-130, 20])
+                pm = {'Azores':'Portugal', 'Canary Islands':'Spain', 'Cayman Island':'Cayman Islands', 'Saint Pierre and Miquelon':'France'}
+                geo_df['MapCountry'] = geo_df['Country'].replace(pm)
+                counts = geo_df.groupby('MapCountry').size().reset_index(name='Logs')
+                fig = px.choropleth(counts, locations='MapCountry', locationmode="country names", color='Logs', color_continuous_scale=gs, template="plotly_dark")
             else:
-                c_data = geo_df[geo_df['Country'] == target]; cam = {'ON':'Ontario','QC':'Quebec','NS':'Nova Scotia','NB':'New Brunswick','MB':'Manitoba','BC':'British Columbia','PE':'Prince Edward Island','SK':'Saskatchewan','AB':'Alberta','NL':'Newfoundland and Labrador','NU':'Nunavut','NT':'Northwest Territories','YT':'Yukon'} if target == 'Canada' else {}; c_data['MapLoc'] = c_data['State'].map(cam) if target == 'Canada' else c_data['State']; counts = c_data.groupby('MapLoc').size().reset_index(name='Logs').dropna(); fig = px.choropleth(counts, geojson=gj_url, locations='MapLoc', featureidkey=gj_key, locationmode=loc_mode, color='Logs', scope=scope, color_continuous_scale=gs, template="plotly_dark")
-            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)'), margin={"r":0,"t":0,"l":0,"b":0}, height=750); ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"m_{gv}_{st.session_state.map_key}")
+                c_data = geo_df[geo_df['Country'] == target]
+                if target == 'Canada': cam = {'ON':'Ontario','QC':'Quebec','NS':'Nova Scotia','NB':'New Brunswick','MB':'Manitoba','BC':'British Columbia','PE':'Prince Edward Island','SK':'Saskatchewan','AB':'Alberta','NL':'Newfoundland and Labrador','NU':'Nunavut','NT':'Northwest Territories','YT':'Yukon'}
+                else: cam = {}
+                c_data['MapLoc'] = c_data['State'].map(cam) if target == 'Canada' else c_data['State']
+                counts = c_data.groupby('MapLoc').size().reset_index(name='Logs').dropna()
+                fig = px.choropleth(counts, geojson=gj_url, locations='MapLoc', featureidkey=gj_key, locationmode=loc_mode, color='Logs', scope=scope, color_continuous_scale=gs, template="plotly_dark")
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)'), margin={"r":0,"t":0,"l":0,"b":0}, height=750)
+            ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"m_{gv}_{st.session_state.map_key}")
             if ev and ev.get("selection") and ev["selection"].get("points"):
-                raw = ev["selection"]["points"][0]["location"]; new_sel = raw
-                if target == 'Canada': inv = {v: k for k, v in cam.items()}; new_sel = inv.get(raw, raw)
+                raw = ev["selection"]["points"][0]["location"]
+                new_sel = {v: k for k, v in cam.items()}.get(raw, raw) if target == 'Canada' else raw
                 if st.session_state.selected_state != new_sel: st.session_state.selected_state = new_sel; st.rerun()
         if st.session_state.selected_state:
             with col_f:
                 sel = st.session_state.selected_state; st.markdown(f"### {sel} INTEL")
-                if st.button("❌ CLEAR SELECTION", key="cl_map", use_container_width=True): st.session_state.selected_state = None; st.session_state.map_key += 1; st.rerun()
-                if target == 'World': s_of, s_fr = geo_df[geo_df['MapCountry'] == sel], geo_df[geo_df['DXer_Country'] == sel]
-                else: s_of, s_fr = geo_df[geo_df['Country'] == target][geo_df['State'] == sel], geo_df[geo_df[dx_st_col] == sel]
-                st.markdown('<div class="stat-header">TOTAL LOGS IN DATASET</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True); st.dataframe(s_fr.groupby('State' if target != 'World' else 'Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
+                if st.button("❌ CLEAR SELECTION", key="cl_map", use_container_width=True):
+                    st.session_state.selected_state = None; st.session_state.map_key += 1; st.rerun()
+                s_of = geo_df[geo_df['State'] == sel] if target != 'World' else geo_df[geo_df['MapCountry'] == sel]
+                st.markdown(f'<div class="stat-header">TOTAL LOGS</div><div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
+                st.dataframe(s_of.groupby('DXer').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
 
-# 8. MODULE 4: TEMPORAL TRENDS
+# 8. TEMPORAL TRENDS
 elif selected_page == "TEMPORAL TRENDS":
     st.header("Temporal Intelligence Suite")
     tv = st.pills("MODULE", options=["Yearly Trends", "Monthly Trends", "Hourly Analysis"], default="Hourly Analysis")
@@ -265,35 +262,39 @@ elif selected_page == "TEMPORAL TRENDS":
     if tv == "Hourly Analysis":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_hour is not None else st.columns([1, 0.001])
         with col_m:
-            st.markdown("### DIURNAL VOLUME CURVE & HISTORY TIMELINE"); st.caption("👈 CLICK ANY BAR OR POINT TO ANALYZE HOURLY INTELLIGENCE")
+            st.markdown("### DIURNAL VOLUME CURVE & HISTORY TIMELINE"); st.caption("👈 Click any bar or point to analyze hourly intelligence")
             h_data = filt_df.groupby(h_col).size().reset_index(name='Logs').sort_values(h_col)
-            fig = go.Figure(); fig.add_trace(go.Bar(x=h_data[h_col], y=h_data['Logs'], name='Log Volume', marker_color='#D32F2F', opacity=0.3, hoverinfo='x+y')); fig.add_trace(go.Scatter(x=h_data[h_col], y=h_data['Logs'], mode='markers+lines', name='Hour Mark', marker=dict(size=12, color='#D32F2F', line=dict(width=2, color='white')), line=dict(width=1, color='#444'))); fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=600, showlegend=False, xaxis=dict(title="Local Hour (0-23)", tickmode='array', tickvals=list(range(24)), range=[-0.5, 23.5], rangeslider=dict(visible=True), type='linear'), yaxis=dict(title="Total Log Volume", showgrid=False))
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=h_data[h_col], y=h_data['Logs'], name='Log Volume', marker_color='#D32F2F', opacity=0.3, hoverinfo='x+y'))
+            fig.add_trace(go.Scatter(x=h_data[h_col], y=h_data['Logs'], mode='markers+lines', name='Hour Mark', marker=dict(size=12, color='#D32F2F', line=dict(width=2, color='white'))))
+            fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=600, showlegend=False, xaxis=dict(title="Local Hour (0-23)", tickmode='array', tickvals=list(range(24)), range=[-0.5, 23.5], rangeslider=dict(visible=True)))
             ev_hour = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"h_chart_{st.session_state.hour_map_key}")
-            if ev_hour and "selection" in ev_hour and ev_hour["selection"]["points"]:
+            st.caption("🕒 USE WHITE SLIDER ABOVE TO ZOOM TIMELINE VIEW")
+            if ev_hour and "selection" in ev_hour and ev_hour["selection"].get("points"):
                 new_h = int(ev_hour["selection"]["points"][0]["x"])
                 if st.session_state.selected_hour != new_h:
-                    st.session_state.selected_hour = new_h
-                    st.rerun()
+                    st.session_state.selected_hour = new_h; st.rerun()
         if st.session_state.selected_hour is not None:
             with col_f:
-                h = st.session_state.selected_hour
-                st.markdown(f"### HOUR {h:02d}:00 INTEL")
+                h = st.session_state.selected_hour; st.markdown(f"### HOUR {h:02d}:00 INTEL")
                 if st.button("❌ CLEAR HOUR", key="cl_hr", use_container_width=True):
-                    st.session_state.selected_hour = None
-                    st.session_state.hour_map_key += 1
-                    st.rerun()
+                    st.session_state.selected_hour = None; st.session_state.hour_map_key += 1; st.rerun()
                 s_h = filt_df[filt_df[h_col].astype(int) == int(h)]
-                st.markdown('<div class="stat-header">HOUR MISSION SUMMARY</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stat-val">{len(s_h):,} LOGS</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-header">MISSION SUMMARY</div><div class="stat-val">{len(s_h):,} LOGS</div>', unsafe_allow_html=True)
+                if not s_h.empty:
+                    st.markdown(f'<div class="stat-header">PEAK MONTH</div><div class="stat-val">{s_h[m_name_col].mode().iloc[0].upper()}</div>', unsafe_allow_html=True)
+                    paths = s_h.groupby(['DXer_State_Prov', 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                    paths['Path'] = paths['DXer_State_Prov'] + " ➔ " + paths['State']
+                    st.dataframe(paths[['Path', 'L']], hide_index=True)
 
     elif tv == "Monthly Trends":
         st.markdown("### MONTHLY LOG ALMANAC")
-        st.caption("Select a month below to view the seasonal density matrix.")
         st.caption("👈 Click on any colored day to view a full tactical report of that day's activity.")
         sel_m_name = st.pills("SELECT MONTH", ["May", "June", "July", "August"], default="June")
         m_df = filt_df[filt_df[m_name_col] == sel_m_name]
         if not m_df.empty:
             pivot = m_df.pivot_table(index=dom_col, columns=y_col, values='Station', aggfunc='count').fillna(0).astype(int).reindex(range(1, 32), fill_value=0)
+            # Calculations
             pivot['TOTAL LOGS'] = pivot.sum(axis=1)
             pivot['ACTIVE YEARS'] = (pivot.iloc[:, :-1] > 0).sum(axis=1)
             pivot['AVG PER YEAR'] = (pivot['TOTAL LOGS'] / pivot['ACTIVE YEARS']).replace([np.inf, -np.inf], 0).fillna(0).round(0).astype(int)
@@ -311,84 +312,54 @@ elif selected_page == "TEMPORAL TRENDS":
             full_matrix = pd.concat([pivot, footer])
             core_years = [c for c in full_matrix.columns if c not in ['TOTAL LOGS', 'ACTIVE YEARS', 'AVG PER YEAR']]
             z_heat = full_matrix.copy().values.astype(float); max_d = pivot[core_years].max().max()
-            text_colors = []
-            for r_idx, r_name in enumerate(full_matrix.index):
-                row_colors = []
-                for c_idx, c_name in enumerate(full_matrix.columns):
-                    val = full_matrix.iloc[r_idx, c_idx]
-                    if not (isinstance(r_name, (int, np.integer)) and 1 <= r_name <= 31 and c_name in core_years): 
-                        z_heat[r_idx, c_idx] = np.nan
-                        row_colors.append("white")
-                    elif val == 0: 
-                        z_heat[r_idx, c_idx] = np.nan
-                        row_colors.append("white")
-                    else:
-                        rel = val / max_d
-                        row_colors.append("black" if rel > 0.8 else "white")
-                text_colors.append(row_colors)
             
-            fig_alm = go.Figure(data=go.Heatmap(z=z_heat, x=full_matrix.columns.astype(str), y=full_matrix.index.astype(str), colorscale=[[0, '#640000'], [0.2, '#D32F2F'], [0.5, '#FFA500'], [1, '#FFFF00']], showscale=False, hoverinfo='none', zmin=1, zmax=max_d))
+            # Interactive Plotly Heatmap
+            fig_alm = go.Figure(data=go.Heatmap(
+                z=np.where((full_matrix.index.isin(range(1,32))) & (full_matrix.columns.isin(core_years)) & (full_matrix > 0), full_matrix, np.nan),
+                x=full_matrix.columns.astype(str), y=full_matrix.index.astype(str),
+                colorscale=[[0, '#640000'], [0.2, '#D32F2F'], [0.5, '#FFA500'], [1, '#FFFF00']],
+                showscale=False, hoverinfo='none', zmin=1, zmax=max_d
+            ))
+            # Text layer with conditional contrast
             for i, r_name in enumerate(full_matrix.index):
                 for j, c_name in enumerate(full_matrix.columns):
-                    fig_alm.add_annotation(x=full_matrix.columns.astype(str)[j], y=full_matrix.index.astype(str)[i], text=str(int(full_matrix.iloc[i, j])), showarrow=False, font=dict(family="Oswald", size=11, color=text_colors[i][j]))
+                    val = full_matrix.iloc[i, j]
+                    t_col = "black" if (isinstance(r_name, (int, np.integer)) and 1 <= r_name <= 31 and c_name in core_years and val/max_d > 0.8) else "white"
+                    fig_alm.add_annotation(x=full_matrix.columns.astype(str)[j], y=full_matrix.index.astype(str)[i], text=str(int(val)), showarrow=False, font=dict(family="Oswald", color=t_col))
             fig_alm.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=1100, margin=dict(l=0,r=0,t=40,b=0), xaxis=dict(side="top"), yaxis=dict(autorange="reversed", tickmode='linear'))
 
             cm, ci = st.columns([3, 1]) if st.session_state.sel_alm_d else st.columns([1, 0.001])
             with cm:
                 ev_alm = st.plotly_chart(fig_alm, use_container_width=True, on_select="rerun", key=f"alm_{st.session_state.alm_key}")
-                if ev_alm and "selection" in ev_alm and ev_alm["selection"]["points"]:
+                if ev_alm and "selection" in ev_alm and ev_alm["selection"].get("points"):
                     pt = ev_alm["selection"]["points"][0]
                     try:
-                        dv, yv = int(pt["y"]), int(pt["x"])
+                        dv = int(pt["y"])
                         if 1 <= dv <= 31: 
-                            st.session_state.sel_alm_d, st.session_state.sel_alm_y = dv, yv
-                            st.rerun()
+                            st.session_state.sel_alm_d, st.session_state.sel_alm_y = dv, int(pt["x"]); st.rerun()
                     except: pass
             if st.session_state.sel_alm_d:
                 with ci:
-                    d, yr = st.session_state.sel_alm_d, st.session_state.sel_alm_y
-                    st.markdown(f"### 📡 {sel_m_name.upper()} {d}, {yr}")
-                    if st.button("❌ CLOSE REPORT", use_container_width=True):
-                        st.session_state.sel_alm_d = None
-                        st.rerun()
+                    d, yr = st.session_state.sel_alm_d, st.session_state.sel_alm_y; st.markdown(f"### 📡 {sel_m_name.upper()} {d}, {yr}")
+                    if st.button("❌ CLOSE REPORT", use_container_width=True): 
+                        st.session_state.sel_alm_d = None; st.rerun()
                     s_day = m_df[(m_df[dom_col] == d) & (m_df[y_col] == yr)]
                     if not s_day.empty:
-                        st.markdown('<div class="stat-header">MISSION DATA</div>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="stat-val">{len(s_day):,} LOGS</div>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="stat-val">{s_day["Frequency"].max()} MHz</div><div class="stat-label">MUF Reported</div>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="stat-val">{s_day["DXer"].nunique()} DXERS</div>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="stat-val">{s_day["Local_Time"].min()} ➔ {s_day["Local_Time"].max()}</div>', unsafe_allow_html=True)
-                        st.markdown('<div class="stat-header">TOP ORIGINS</div>', unsafe_allow_html=True)
-                        st.dataframe(s_day.groupby('DXer_State_Prov').size().sort_values(ascending=False).head(5), hide_index=True, use_container_width=True)
-                        st.markdown('<div class="stat-header">FURTHEST</div>', unsafe_allow_html=True)
-                        f = s_day.sort_values(d_col, ascending=False).iloc[0]
-                        st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div><div class="stat-label">{f["Station"]} by {f["DXer"]}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-header">DAILY LOGS</div><div class="stat-val">{len(s_day):,}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-header">MUF REPORTED</div><div class="stat-val">{s_day["Frequency"].max()} MHz</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-header">UNIQUE DXERS</div><div class="stat-val">{s_day["DXer"].nunique()}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-header">WINDOW</div><div class="stat-val">{s_day["Local_Time"].min()} ➔ {s_day["Local_Time"].max()}</div>', unsafe_allow_html=True)
+                        st.markdown('<div class="stat-header">TOP ORIGINS</div>', unsafe_allow_html=True); st.dataframe(s_day.groupby('DXer_State_Prov').size().sort_values(ascending=False).head(5), hide_index=True)
+                        st.markdown('<div class="stat-header">FURTHEST</div>', unsafe_allow_html=True); f = s_day.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div><div class="stat-label">{f["Station"]} by {f["DXer"]}</div>', unsafe_allow_html=True)
+                        intl = s_day[~s_day['Country'].isin(['USA', 'Canada'])]
+                        if not intl.empty: st.markdown('<div class="stat-header">TOP COUNTRIES</div>', unsafe_allow_html=True); st.dataframe(intl.groupby('Country').size().sort_values(ascending=False).head(3), hide_index=True)
                     else: st.warning("No data.")
 
     elif tv == "Yearly Trends":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_year is not None else st.columns([1, 0.001])
         with col_m:
-            st.markdown("### SEASONAL VOLUME TRENDS (2017-2025)")
-            y_data = filt_df.groupby(y_col).size().reset_index(name='Logs').sort_values(y_col)
-            fig_y = go.Figure()
-            fig_y.add_trace(go.Bar(x=y_data[y_col], y=y_data['Logs'], marker_color='#D32F2F', opacity=0.3))
-            fig_y.add_trace(go.Scatter(x=y_data[y_col], y=y_data['Logs'], mode='markers+lines', marker=dict(size=12, color='#D32F2F', line=dict(width=2, color='white'))))
-            fig_y.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=600, showlegend=False, xaxis=dict(title="Local Year", rangeslider=dict(visible=True)), yaxis=dict(title="Total Log Volume", showgrid=False))
-            ev_year = st.plotly_chart(fig_y, use_container_width=True, on_select="rerun", key=f"y_chart_{st.session_state.year_map_key}")
-            if ev_year and "selection" in ev_year and ev_year["selection"]["points"]:
-                st.session_state.selected_year = int(ev_year["selection"]["points"][0]["x"])
-                st.rerun()
+            st.markdown("### SEASONAL VOLUME TRENDS"); y_data = filt_df.groupby(y_col).size().reset_index(name='Logs').sort_values(y_col); fig_y = go.Figure(); fig_y.add_trace(go.Bar(x=y_data[y_col], y=y_data['Logs'], marker_color='#D32F2F', opacity=0.3)); fig_y.add_trace(go.Scatter(x=y_data[y_col], y=y_data['Logs'], mode='markers+lines', marker=dict(size=12, color='#D32F2F', line=dict(width=2, color='white')))); fig_y.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=600, showlegend=False, xaxis=dict(title="Local Year", rangeslider=dict(visible=True))); ev_year = st.plotly_chart(fig_y, use_container_width=True, on_select="rerun", key=f"y_chart_{st.session_state.year_map_key}"); if ev_year and "selection" in ev_year and ev_year["selection"].get("points"): st.session_state.selected_year = int(ev_year["selection"]["points"][0]["x"]); st.rerun()
         if st.session_state.selected_year is not None:
             with col_f:
-                yr = st.session_state.selected_year
-                st.markdown(f"### {yr} SEASON INTEL")
-                if st.button("❌ CLEAR YEAR", use_container_width=True):
-                    st.session_state.selected_year = None
-                    st.session_state.year_map_key += 1
-                    st.rerun()
-                s_y = filt_df[filt_df[y_col].astype(int) == int(yr)]
-                st.markdown('<div class="stat-header">SEASON VOLUME</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stat-val">{len(s_y):,} LOGS</div>', unsafe_allow_html=True)
-                if not s_y.empty:
-                    st.markdown('<div class="stat-header">PEAK MONTH</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="stat-val">{str(s_y[m_name_col].mode().iloc[0]).upper()}</div>', unsafe_allow_html=True)
+                yr = st.session_state.selected_year; st.markdown(f"### {yr} SEASON INTEL"); if st.button("❌ CLEAR YEAR", use_container_width=True): st.session_state.selected_year = None; st.session_state.year_map_key += 1; st.rerun()
+                s_y = filt_df[filt_df[y_col].astype(int) == int(yr)]; st.markdown(f'<div class="stat-header">SEASON VOLUME</div><div class="stat-val">{len(s_y):,} LOGS</div>', unsafe_allow_html=True)
