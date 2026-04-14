@@ -6,7 +6,6 @@ import datetime
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
-import calendar
 from google.cloud import bigquery
 from google.oauth2 import service_account 
 
@@ -21,10 +20,13 @@ if 'selected_state' not in st.session_state: st.session_state.selected_state = N
 if 'selected_tier' not in st.session_state: st.session_state.selected_tier = None
 if 'selected_hour' not in st.session_state: st.session_state.selected_hour = None
 if 'selected_year' not in st.session_state: st.session_state.selected_year = None
+if 'selected_almanac_day' not in st.session_state: st.session_state.selected_almanac_day = None
+if 'selected_almanac_year' not in st.session_state: st.session_state.selected_almanac_year = None
 if 'map_key' not in st.session_state: st.session_state.map_key = 500000
 if 'hour_map_key' not in st.session_state: st.session_state.hour_map_key = 600000
 if 'year_map_key' not in st.session_state: st.session_state.year_map_key = 700000
 if 'dist_map_key' not in st.session_state: st.session_state.dist_map_key = 800000
+if 'almanac_key' not in st.session_state: st.session_state.almanac_key = 900000
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -47,7 +49,6 @@ st.markdown("""
     [data-testid="stMetricValue"] { color: #FFFFFF !important; font-size: 2.2rem; font-weight: 200; }
     [data-testid="stMetricLabel"] { color: #D32F2F !important; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 2px; }
     .watermark { position: absolute; bottom: 80px; right: 40px; z-index: 1000; pointer-events: none; opacity: 0.4; }
-    
     .stat-header { color: #D32F2F; font-size: 0.95rem; font-weight: 400; margin-bottom: 5px; border-bottom: 1px solid #333; letter-spacing: 1px; padding-top: 15px; }
     .stat-val { font-size: 1.3rem; color: #FFF; font-weight: 300; margin-top: 5px;}
     .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 8px; line-height: 1.2; }
@@ -62,7 +63,7 @@ def get_avg_date(dates_series):
         return (datetime.datetime(2024, 1, 1) + datetime.timedelta(days=int(ds.dt.dayofyear.mean()) - 1)).strftime('%b %d')
     except: return "N/A"
 
-# 2. DATA LOADING (THE INTELLIGENT JOIN ENGINE)
+# 2. DATA LOADING
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -146,7 +147,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER (RESTORED)
+# 6. MODULE 2: ES-CLOUD TRACKER (LOCKED)
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -320,48 +321,85 @@ elif selected_page == "TEMPORAL TRENDS":
     elif tv == "Monthly Trends":
         st.markdown("### MONTHLY LOG ALMANAC")
         st.caption("Select a month below to view the seasonal density matrix.")
+        st.caption("👈 Click on any colored day to view a full tactical report of that day's activity.")
         sel_m_name = st.pills("SELECT MONTH", ["May", "June", "July", "August"], default="June")
+        
         m_df = filt_df[filt_df[m_name_col] == sel_m_name]
         if not m_df.empty:
             pivot = m_df.pivot_table(index=dom_col, columns=y_col, values='Station', aggfunc='count').fillna(0).astype(int)
             pivot = pivot.reindex(range(1, 32), fill_value=0)
-            pivot['TOTAL LOGS'] = pivot.sum(axis=1)
-            pivot['ACTIVE YEARS'] = (pivot.iloc[:, :-1] > 0).sum(axis=1)
-            pivot['AVG PER YEAR'] = (pivot['TOTAL LOGS'] / pivot['ACTIVE YEARS']).replace([np.inf, -np.inf], 0).fillna(0).round(0).astype(int)
-            footer = pd.DataFrame(index=['TOTAL LOGS', 'ACTIVE DAYS', 'AVG PER DAY', 'DAYS >= 100', 'DAYS >= 500', 'DAYS >= 1000'], columns=pivot.columns)
-            for col in pivot.columns:
-                if col in ['AVG PER YEAR']: continue
-                data = pivot.loc[1:31, col]
-                footer.at['TOTAL LOGS', col] = int(data.sum())
-                footer.at['ACTIVE DAYS', col] = int((data > 0).sum())
-                footer.at['AVG PER DAY', col] = int(round(data.sum() / (data > 0).sum() if (data > 0).sum() > 0 else 0))
-                footer.at['DAYS >= 100', col] = int((data >= 100).sum())
-                footer.at['DAYS >= 500', col] = int((data >= 500).sum())
-                footer.at['DAYS >= 1000', col] = int((data >= 1000).sum())
-            final_pivot = pd.concat([pivot, footer]).reset_index().rename(columns={'index': 'DAY/METRIC'})
-            def style_almanac_final(df):
-                styles = pd.DataFrame('', index=df.index, columns=df.columns)
-                core_val_cols = [c for c in df.columns if c not in ['DAY/METRIC', 'TOTAL LOGS', 'ACTIVE YEARS', 'AVG PER YEAR']]
-                core_matrix = df.iloc[:31][core_val_cols]
-                max_daily = core_matrix.max().max() if not core_matrix.empty else 100
-                for r_idx in df.index:
-                    day_label = df.at[r_idx, 'DAY/METRIC']
-                    for c in df.columns:
-                        val = df.at[r_idx, c]
-                        if isinstance(day_label, (int, np.integer)) and 1 <= day_label <= 31 and c in core_val_cols:
-                            if val > 0:
-                                rel = min(val / max_daily, 1.0)
-                                if rel > 0.8: bg, fg = '#FFFF00', '#000000'
-                                elif rel > 0.5: bg, fg = '#FFA500', '#FFFFFF'
-                                elif rel > 0.2: bg, fg = '#D32F2F', '#FFFFFF'
-                                else: bg, fg = '#640000', '#FFFFFF'
-                                styles.at[r_idx, c] = f'background-color: {bg}; color: {fg};'
+            
+            # THE MATRIX REPORT (PLOTLY ENGINE)
+            # We use Heatmap for interactivity since st.dataframe doesn't support cell-selection
+            fig_alm = go.Figure(data=go.Heatmap(
+                z=pivot.values,
+                x=pivot.columns.astype(str),
+                y=pivot.index,
+                colorscale=[[0, '#000000'], [0.1, '#640000'], [0.3, '#D32F2F'], [0.6, '#FFA500'], [1, '#FFFF00']],
+                showscale=False,
+                text=pivot.values,
+                texttemplate="%{text}",
+                textfont={"family": "Oswald", "size": 12},
+                hoverinfo='x+y+z'
+            ))
+            fig_alm.update_layout(
+                template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                height=900, margin=dict(l=0,r=0,t=0,b=0),
+                xaxis=dict(side="top", title="YEAR / SEASON", tickmode='array', tickvals=pivot.columns.astype(str)),
+                yaxis=dict(title="DAY OF MONTH", autorange="reversed", tickmode='linear', dtick=1)
+            )
+            
+            col_matrix, col_day_intel = st.columns([3, 1]) if st.session_state.selected_almanac_day else st.columns([1, 0.001])
+            
+            with col_matrix:
+                ev_alm = st.plotly_chart(fig_alm, use_container_width=True, on_select="rerun", key=f"alm_{st.session_state.almanac_key}")
+                if ev_alm and "selection" in ev_alm and "points" in ev_alm["selection"] and ev_alm["selection"]["points"]:
+                    pt = ev_alm["selection"]["points"][0]
+                    st.session_state.selected_almanac_day = int(pt["y"])
+                    st.session_state.selected_almanac_year = int(pt["x"])
+                    st.rerun()
+
+            if st.session_state.selected_almanac_day:
+                with col_day_intel:
+                    d, yr = st.session_state.selected_almanac_day, st.session_state.selected_almanac_year
+                    st.markdown(f"### 📡 {sel_m_name.upper()} {d}, {yr}")
+                    if st.button("❌ CLOSE REPORT", use_container_width=True):
+                        st.session_state.selected_almanac_day = None; st.rerun()
+                    
+                    s_day = m_df[(m_df[dom_col] == d) & (m_df[y_col] == yr)]
+                    
+                    if not s_day.empty:
+                        st.markdown('<div class="stat-header">VOLUME & INTENSITY</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-val">{len(s_day):,} LOGS</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-val">{s_day["Frequency"].max()} MHz</div><div class="stat-label">MUF Reported</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-val">{s_day["DXer"].nunique()}</div><div class="stat-label">Unique DXers Active</div>', unsafe_allow_html=True)
+                        
+                        st.markdown('<div class="stat-header">SIGNAL WINDOW</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-val">{s_day["Local_Time"].min()} ➔ {s_day["Local_Time"].max()}</div>', unsafe_allow_html=True)
+                        active_h = sorted(s_day[h_col].unique())
+                        st.markdown(f'<div class="stat-label">Active Hours: {", ".join([f"{h:02d}" for h in active_h])}</div>', unsafe_allow_html=True)
+                        
+                        st.markdown('<div class="stat-header">REACH INTELLIGENCE</div>', unsafe_allow_html=True)
+                        st.markdown('<div class="stat-label">Top DXer Origins</div>', unsafe_allow_html=True)
+                        st.dataframe(s_day.groupby('DXer_State_Prov').size().sort_values(ascending=False).head(5), hide_index=True, use_container_width=True)
+                        st.markdown('<div class="stat-label">Top Station States</div>', unsafe_allow_html=True)
+                        st.dataframe(s_day.groupby('State').size().sort_values(ascending=False).head(5), hide_index=True, use_container_width=True)
+                        
+                        st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
+                        f = s_day.sort_values(d_col, ascending=False).iloc[0]
+                        st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div><div class="stat-label">{f["Station"]} caught by {f["DXer"]}</div>', unsafe_allow_html=True)
+                        
+                        st.markdown('<div class="stat-header">MOST HEARD STATION</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-val">{s_day["Station"].mode().iloc[0]}</div>', unsafe_allow_html=True)
+                        
+                        st.markdown('<div class="stat-header">GLOBAL FOOTPRINT</div>', unsafe_allow_html=True)
+                        intl = s_day[~s_day['Country'].isin(['USA', 'Canada'])]
+                        if not intl.empty:
+                            st.dataframe(intl.groupby('Country').size().sort_values(ascending=False).head(3), hide_index=True, use_container_width=True)
                         else:
-                            styles.at[r_idx, c] = 'background-color: #000000; color: #FFFFFF; font-weight: bold;'
-                return styles
-            st.dataframe(final_pivot.style.apply(style_almanac_final, axis=None), use_container_width=True, height=1300, hide_index=True)
-        else:
-            st.warning(f"No signal intelligence recorded for {sel_m_name} in current filter set.")
+                            st.markdown('<div class="stat-label">No Non-US/CA Logs</div>', unsafe_allow_html=True)
+                    else:
+                        st.warning("No signal intelligence for this specific date.")
 
     elif tv == "Yearly Trends":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_year is not None else st.columns([1, 0.001])
@@ -376,7 +414,7 @@ elif selected_page == "TEMPORAL TRENDS":
             with col_f:
                 yr = st.session_state.selected_year
                 st.markdown(f"### {yr} SEASON INTEL")
-                if st.button("❌ CLEAR YEAR", use_container_width=True): st.session_state.selected_year = None; st.session_state.year_map_key += 1; st.rerun()
+                if st.button("❌ CLEAR YEAR", use_container_width=True): st.session_state.selected_year = None; st.rerun()
                 s_y = filt_df[filt_df[y_col].astype(int) == int(yr)]
                 st.markdown('<div class="stat-header">SEASON VOLUME</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{len(s_y):,} LOGS</div>', unsafe_allow_html=True)
                 if not s_y.empty:
