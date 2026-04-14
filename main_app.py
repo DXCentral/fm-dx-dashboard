@@ -73,30 +73,23 @@ def load_data():
         client = bigquery.Client(credentials=credentials, project=credentials.project_id)
         df_logs = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`").to_dataframe()
         df_coords = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`").to_dataframe()
-        
         l_dx, l_st = [c for c in df_logs.columns if 'Concatenated' in c and 'DX' in c][0], [c for c in df_logs.columns if 'Concatenated' in c and 'Station' in c][0]
         c_dx, c_st = [c for c in df_coords.columns if 'Concatenated' in c and 'DX' in c][0], [c for c in df_coords.columns if 'Concatenated' in c and 'Station' in c][0]
-        
         df_logs['join_dx'], df_logs['join_st'] = df_logs[l_dx].str.upper().str.strip(), df_logs[l_st].str.upper().str.strip()
         df_coords['join_dx'], df_coords['join_st'] = df_coords[c_dx].str.upper().str.strip(), df_coords[c_st].str.upper().str.strip()
         df_coords = df_coords.drop_duplicates(subset=['join_dx', 'join_st'])
-        
         df = df_logs.merge(df_coords, on=['join_dx', 'join_st'], how='left', suffixes=('', '_coord'))
-        
         dx_lat, dx_lon = [c for c in df.columns if 'DXer_Latitude' in c or ('DX' in c and 'Lat' in c)][0], [c for c in df.columns if 'DXer_Longitude' in c or ('DX' in c and 'Lon' in c)][0]
         st_lat, st_lon = [c for c in df.columns if 'Station_Lat' in c or ('ST' in c and 'Lat' in c)][0], [c for c in df.columns if 'Station_Long' in c or ('ST' in c and 'Lon' in c)][0]
         for c in [dx_lat, dx_lon, st_lat, st_lon]: df[c] = pd.to_numeric(df[c].astype(str).str.replace('°', '').str.strip(), errors='coerce').astype('float32')
-        
         df['Mid_Lat'], df['Mid_Lon'] = (df[dx_lat] + df[st_lat]) / 2, (df[dx_lon] + df[st_lon]) / 2
         df['Date_Obj'], df['Time_Str'] = pd.to_datetime(df['Local_Date']).dt.date, pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
-        
         dist_col = [c for c in df.columns if 'Distance' in c and 'mi' in c][0]
         dd_col = [c for c in df.columns if 'Distance' in c and 'Distribution' in c][0]
         h_col = next((c for c in df.columns if 'Local' in c and 'Hour' in c), 'Local_Hour')
         y_col = next((c for c in df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
         dom_col = next((c for c in df.columns if 'Local' in c and 'Day' in c and 'Month' in c), 'Local_Day_of_Month')
         m_name_col = next((c for c in df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name')
-        
         return df, df['Date_Obj'].max(), dist_col, dd_col, dx_lat, dx_lon, st_lat, st_lon, l_dx, h_col, y_col, dom_col, m_name_col
     except Exception as e:
         st.error(f"Link Failure: {e}"); return pd.DataFrame(), None, "Distance", "Distance_Distribution", None, None, None, None, "DXer_Location", "Local_Hour", "Local_Year", "Local_Day_of_Month", "Local_Month_Name"
@@ -305,8 +298,7 @@ elif selected_page == "TEMPORAL TRENDS":
             fig = go.Figure()
             fig.add_trace(go.Bar(x=h_data[h_col], y=h_data['Logs'], name='Log Volume', marker_color='#D32F2F', opacity=0.3, hoverinfo='x+y'))
             fig.add_trace(go.Scatter(x=h_data[h_col], y=h_data['Logs'], mode='markers+lines', name='Hour Mark', marker=dict(size=12, color='#D32F2F', line=dict(width=2, color='white')), line=dict(width=1, color='#444')))
-            fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=600, showlegend=False,
-                              xaxis=dict(title="Local Hour (0-23)", tickmode='array', tickvals=list(range(24)), range=[-0.5, 23.5], rangeslider=dict(visible=True), type='linear'), yaxis=dict(title="Total Log Volume", showgrid=False))
+            fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=600, showlegend=False, xaxis=dict(title="Local Hour (0-23)", tickmode='array', tickvals=list(range(24)), range=[-0.5, 23.5], rangeslider=dict(visible=True), type='linear'), yaxis=dict(title="Total Log Volume", showgrid=False))
             ev_hour = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"h_chart_{st.session_state.hour_map_key}")
             st.caption("🕒 USE WHITE SLIDER ABOVE TO ZOOM TIMELINE VIEW")
             if ev_hour and "selection" in ev_hour and "points" in ev_hour["selection"] and ev_hour["selection"]["points"]:
@@ -329,18 +321,14 @@ elif selected_page == "TEMPORAL TRENDS":
         st.markdown("### MONTHLY LOG ALMANAC")
         st.caption("Select a month below to view the seasonal density matrix.")
         sel_m_name = st.pills("SELECT MONTH", ["May", "June", "July", "August"], default="June")
-        
         m_df = filt_df[filt_df[m_name_col] == sel_m_name]
         if not m_df.empty:
             pivot = m_df.pivot_table(index=dom_col, columns=y_col, values='Station', aggfunc='count').fillna(0).astype(int)
             pivot = pivot.reindex(range(1, 32), fill_value=0)
-            
-            # CALCULATE SUMMARY COLS
             pivot['TOTAL LOGS'] = pivot.sum(axis=1)
             pivot['ACTIVE YEARS'] = (pivot.iloc[:, :-1] > 0).sum(axis=1)
             pivot['AVG PER YEAR'] = (pivot['TOTAL LOGS'] / pivot['ACTIVE YEARS']).replace([np.inf, -np.inf], 0).fillna(0).round(1)
             
-            # CALCULATE SUMMARY ROWS
             footer = pd.DataFrame(index=['TOTAL LOGS', 'ACTIVE DAYS', 'AVG PER DAY', 'DAYS >= 100', 'DAYS >= 500', 'DAYS >= 1000'], columns=pivot.columns)
             for col in pivot.columns:
                 if col in ['AVG PER YEAR']: continue
@@ -354,18 +342,31 @@ elif selected_page == "TEMPORAL TRENDS":
             
             final_pivot = pd.concat([pivot, footer.round(1)])
             
-            def style_almanac(val):
-                if isinstance(val, (int, float)) and val > 0:
-                    max_v = pivot.iloc[:31, :-3].max().max() if not pivot.iloc[:31, :-3].empty else 100
-                    rel = min(val / max_v, 1.0)
-                    if rel > 0.8: bg, fg = '#FFFF00', '#000000' # Yellow/Black
-                    elif rel > 0.5: bg, fg = '#FFA500', '#FFFFFF' # Orange/White
-                    elif rel > 0.2: bg, fg = '#D32F2F', '#FFFFFF' # Red/White
-                    else: bg, fg = '#640000', '#FFFFFF' # Deep Red/White
-                    return f'background-color: {bg}; color: {fg};'
-                return ''
+            # --- THE ISOLATED HEAT ENGINE (V163) ---
+            def style_almanac_tactical(df):
+                styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                # Max value based only on core year/day matrix
+                core_matrix = df.iloc[:31, :-3]
+                max_daily = core_matrix.max().max() if not core_matrix.empty else 100
+                
+                for r in df.index:
+                    for c in df.columns:
+                        val = df.at[r, c]
+                        # Apply heatmap only to core days and actual year columns
+                        if isinstance(r, (int, np.integer)) and 1 <= r <= 31 and c not in ['TOTAL LOGS', 'ACTIVE YEARS', 'AVG PER YEAR']:
+                            if val > 0:
+                                rel = min(val / max_daily, 1.0)
+                                if rel > 0.8: bg, fg = '#FFFF00', '#000000'
+                                elif rel > 0.5: bg, fg = '#FFA500', '#FFFFFF'
+                                elif rel > 0.2: bg, fg = '#D32F2F', '#FFFFFF'
+                                else: bg, fg = '#640000', '#FFFFFF'
+                                styles.at[r, c] = f'background-color: {bg}; color: {fg};'
+                        else:
+                            # Frames (Summary Columns and Footer Rows) are Black with White text
+                            styles.at[r, c] = 'background-color: #000000; color: #FFFFFF; font-weight: bold;'
+                return styles
 
-            st.dataframe(final_pivot.style.map(style_almanac), use_container_width=True, height=900)
+            st.dataframe(final_pivot.style.apply(style_almanac_tactical, axis=None), use_container_width=True, height=900)
         else:
             st.warning(f"No signal intelligence recorded for {sel_m_name} in current filter set.")
 
