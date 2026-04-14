@@ -361,7 +361,7 @@ elif selected_page == "TEMPORAL TRENDS":
                             styles.at[r_idx, c] = 'background-color: #000000; color: #FFFFFF; font-weight: bold;'
                 return styles
 
-            st.dataframe(final_pivot.style.apply(style_almanac_robust, axis=None), use_container_width=True, height=None, column_config={"DAY/METRIC": st.column_config.Column(width="large")})
+            st.dataframe(final_pivot.style.apply(style_almanac_robust, axis=None), use_container_width=True, height='auto', column_config={"DAY/METRIC": st.column_config.Column(width="large")})
         else:
             st.warning(f"No signal intelligence recorded for {sel_m_name} in current filter set.")
 
