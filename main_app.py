@@ -200,7 +200,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     geo_df = filt_df.copy(); geo_df = geo_df[geo_df['State'] != 'AM']
     dx_st_col = next((c for c in geo_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
     mo_col, yr_col = next((c for c in geo_df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name'), next((c for c in geo_df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
-    gs = [[0, '#640000'], [0.25, '#D32F2F'], [0.4, '#FF4500'], [0.7, '#FFA500'], [1, '#FFFF00']]
+    gs = [[0, '#640000'], [0.2, '#D32F2F'], [0.4, '#FF4500'], [0.7, '#FFA500'], [1, '#FFFF00']]
 
     if gv == "Distance Stats":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_tier else st.columns([1, 0.001])
@@ -214,18 +214,14 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 if ev_hub and "selection" in ev_hub and ev_hub["selection"].get("points"):
                     nt = ev_hub["selection"]["points"][0]["y"]
                     if st.session_state.selected_tier != nt:
-                        st.session_state.selected_tier = nt
-                        st.rerun()
+                        st.session_state.selected_tier = nt; st.rerun()
             pulse_data = geo_df.groupby(['Local_Month', dd_col]).size().reset_index(name='Logs')
             st.plotly_chart(px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', template="plotly_dark"), use_container_width=True)
         if st.session_state.selected_tier:
             with col_f:
-                tier = st.session_state.selected_tier
-                st.markdown(f"### {tier.upper()} INTEL")
+                tier = st.session_state.selected_tier; st.markdown(f"### {tier.upper()} INTEL")
                 if st.button("❌ CLEAR SELECTION", key="cl_dst", use_container_width=True):
-                    st.session_state.selected_tier = None
-                    st.session_state.dist_map_key += 1
-                    st.rerun()
+                    st.session_state.selected_tier = None; st.session_state.dist_map_key += 1; st.rerun()
                 s_of = geo_df[geo_df[dd_col] == tier]
                 st.markdown(f'<div class="stat-header">TOTAL LOGS</div><div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
                 st.dataframe(s_of.groupby('DXer').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
@@ -257,9 +253,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
             with col_f:
                 sel = st.session_state.selected_state; st.markdown(f"### {sel} INTEL")
                 if st.button("❌ CLEAR SELECTION", key="cl_map", use_container_width=True):
-                    st.session_state.selected_state = None
-                    st.session_state.map_key += 1
-                    st.rerun()
+                    st.session_state.selected_state = None; st.session_state.map_key += 1; st.rerun()
                 s_of = geo_df[geo_df['State'] == sel] if target != 'World' else geo_df[geo_df['MapCountry'] == sel]
                 st.markdown(f'<div class="stat-header">TOTAL LOGS</div><div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
                 st.dataframe(s_of.groupby('DXer').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
@@ -281,24 +275,19 @@ elif selected_page == "TEMPORAL TRENDS":
             fig.add_trace(go.Scatter(x=h_data[h_col], y=h_data['Logs'], mode='markers+lines', name='Hour Mark', marker=dict(size=12, color='#D32F2F', line=dict(width=2, color='white'))))
             fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=600, showlegend=False, xaxis=dict(title="Local Hour (0-23)", tickmode='array', tickvals=list(range(24)), range=[-0.5, 23.5], rangeslider=dict(visible=True)))
             ev_hour = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"h_chart_{st.session_state.hour_map_key}")
-            st.caption("🕒 USE WHITE SLIDER ABOVE TO ZOOM TIMELINE VIEW")
-            if ev_hour and "selection" in ev_hour and ev_hour["selection"]["points"]:
+            if ev_hour and "selection" in ev_hour and ev_hour["selection"].get("points"):
                 new_h = int(ev_hour["selection"]["points"][0]["x"])
                 if st.session_state.selected_hour != new_h:
-                    st.session_state.selected_hour = new_h
-                    st.rerun()
+                    st.session_state.selected_hour = new_h; st.rerun()
         if st.session_state.selected_hour is not None:
             with col_f:
-                h = st.session_state.selected_hour
-                st.markdown(f"### HOUR {h:02d}:00 INTEL")
+                h = st.session_state.selected_hour; st.markdown(f"### HOUR {h:02d}:00 INTEL")
                 if st.button("❌ CLEAR HOUR", key="cl_hr", use_container_width=True):
-                    st.session_state.selected_hour = None
-                    st.session_state.hour_map_key += 1
-                    st.rerun()
+                    st.session_state.selected_hour = None; st.session_state.hour_map_key += 1; st.rerun()
                 s_h = filt_df[filt_df[h_col].astype(int) == int(h)]
                 st.markdown(f'<div class="stat-header">LOG VOLUME</div><div class="stat-val">{len(s_h):,}</div>', unsafe_allow_html=True)
                 if not s_h.empty:
-                    st.markdown(f'<div class="stat-header">PEAK MONTH</div><div class="stat-val">{str(s_h[m_name_col].mode().iloc[0]).upper()}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-header">PEAK MONTH</div><div class="stat-val">{s_h[m_name_col].mode().iloc[0].upper()}</div>', unsafe_allow_html=True)
                     st.markdown(f'<div class="stat-header">MUF REPORTED</div><div class="stat-val">{s_h["Frequency"].max()} MHz</div>', unsafe_allow_html=True)
                     st.markdown('<div class="stat-header">TOP PATHS</div>', unsafe_allow_html=True)
                     paths = s_h.groupby(['DXer_State_Prov', 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
@@ -307,45 +296,13 @@ elif selected_page == "TEMPORAL TRENDS":
 
     elif tv == "Monthly Trends":
         st.markdown("### MONTHLY LOG ALMANAC")
-        st.caption("Select a month below to view the seasonal density matrix.")
-        
-        # 🧪 THE INTERACTIVE BRIDGE (V178)
-        with st.popover("🔍 ACTIVATE DAILY FORENSIC GRID"):
-            st.caption("👈 Click on any colored day to view a full tactical report of that day's activity.")
-            sel_m_name = st.pills("SELECT MONTH FOR GRID", ["May", "June", "July", "August"], default="June", key="grid_m_pill")
-            m_grid_df = filt_df[filt_df[m_name_col] == sel_m_name]
-            if not m_grid_df.empty:
-                pivot_grid = m_grid_df.pivot_table(index=dom_col, columns=y_col, values='Station', aggfunc='count').fillna(0).astype(int).reindex(range(1, 32), fill_value=0)
-                core_y = pivot_grid.columns.tolist()
-                max_grid = pivot_grid.max().max()
-                z_vals = np.where(pivot_grid > 0, pivot_grid, np.nan)
-                
-                fig_grid = go.Figure(data=go.Heatmap(
-                    z=z_vals, x=core_y, y=pivot_grid.index,
-                    colorscale=[[0, '#640000'], [0.2, '#D32F2F'], [0.5, '#FFA500'], [1, '#FFFF00']],
-                    showscale=False, hoverinfo='none', zmin=1, zmax=max_grid
-                ))
-                for i, r_name in enumerate(pivot_grid.index):
-                    for j, c_name in enumerate(core_y):
-                        val = pivot_grid.iloc[i, j]
-                        if val > 0:
-                            t_col = "black" if (val/max_grid > 0.8) else "white"
-                            fig_grid.add_annotation(x=c_name, y=r_name, text=str(int(val)), showarrow=False, font=dict(family="Oswald", color=t_col))
-                
-                fig_grid.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', height=800, margin=dict(l=0,r=0,t=40,b=0), xaxis=dict(side="top"), yaxis=dict(autorange="reversed", tickmode='linear'))
-                ev_grid = st.plotly_chart(fig_grid, use_container_width=True, on_select="rerun", key=f"grid_{st.session_state.alm_key}")
-                
-                if ev_grid and "selection" in ev_grid and ev_grid["selection"].get("points"):
-                    pt = ev_grid["selection"]["points"][0]
-                    st.session_state.sel_alm_d = int(pt["y"])
-                    st.session_state.sel_alm_y = int(pt["x"])
-                    st.rerun()
-
-        # --- MAIN SPREADSHEET (V178 RESTORED) ---
-        sel_m_name = st.pills("SELECT MONTH FOR SPREADSHEET", ["May", "June", "July", "August"], default="June", key="main_m_pill")
+        st.caption("👈 Click on any colored day to view a full tactical report of that day's activity.")
+        sel_m_name = st.pills("SELECT MONTH", ["May", "June", "July", "August"], default="June")
         m_df = filt_df[filt_df[m_name_col] == sel_m_name]
+        
         if not m_df.empty:
             pivot = m_df.pivot_table(index=dom_col, columns=y_col, values='Station', aggfunc='count').fillna(0).astype(int).reindex(range(1, 32), fill_value=0)
+            # Calculations
             pivot['TOTAL LOGS'] = pivot.sum(axis=1)
             pivot['ACTIVE YEARS'] = (pivot.iloc[:, :-1] > 0).sum(axis=1)
             pivot['AVG PER YEAR'] = (pivot['TOTAL LOGS'] / pivot['ACTIVE YEARS']).replace([np.inf, -np.inf], 0).fillna(0).round(0).astype(int)
@@ -361,43 +318,51 @@ elif selected_page == "TEMPORAL TRENDS":
                     footer.at['DAYS >= 500', col] = int((d_slice >= 500).sum())
                     footer.at['DAYS >= 1000', col] = int((d_slice >= 1000).sum())
             
-            final_pivot = pd.concat([pivot, footer]).reset_index().rename(columns={'index': 'DAY/METRIC'})
+            full_matrix = pd.concat([pivot, footer])
+            core_years = [c for c in pivot.columns if c not in ['TOTAL LOGS', 'ACTIVE YEARS', 'AVG PER YEAR']]
+            max_d = pivot[core_years].max().max()
+
+            # --- THE TACTICAL INTERACTIVE GRID (V180) ---
+            z_heat = np.where((full_matrix.index.isin(range(1,32))) & (full_matrix.columns.isin(core_years)) & (full_matrix > 0), full_matrix, np.nan)
             
-            def style_isolated_heat(df):
-                styles = pd.DataFrame('', index=df.index, columns=df.columns)
-                core_val_cols = [c for c in df.columns if c not in ['DAY/METRIC', 'TOTAL LOGS', 'ACTIVE YEARS', 'AVG PER YEAR']]
-                core_matrix = df.iloc[:31][core_val_cols]
-                max_v = core_matrix.max().max() if not core_matrix.empty else 100
-                for r_idx in df.index:
-                    day_label = df.at[r_idx, 'DAY/METRIC']
-                    for c in df.columns:
-                        val = df.at[r_idx, c]
-                        if isinstance(day_label, (int, np.integer)) and 1 <= day_label <= 31 and c in core_val_cols:
-                            if val > 0:
-                                rel = min(val / max_v, 1.0)
-                                bg = '#FFFF00' if rel > 0.8 else ('#FFA500' if rel > 0.5 else ('#D32F2F' if rel > 0.2 else '#640000'))
-                                fg = 'black' if rel > 0.8 else 'white'
-                                styles.at[r_idx, c] = f'background-color: {bg}; color: {fg};'
-                        else:
-                            styles.at[r_idx, c] = 'background-color: #000000; color: #FFFFFF; font-weight: bold;'
-                return styles
+            fig_alm = go.Figure(data=go.Heatmap(
+                z=z_heat, x=full_matrix.columns.astype(str), y=full_matrix.index.astype(str),
+                colorscale=[[0, '#640000'], [0.2, '#D32F2F'], [0.5, '#FFA500'], [1, '#FFFF00']],
+                showscale=False, hoverinfo='none', zmin=1, zmax=max_d
+            ))
+            # Text layer logic
+            for i, r_name in enumerate(full_matrix.index):
+                for j, c_name in enumerate(full_matrix.columns):
+                    val = full_matrix.iloc[i, j]
+                    is_peak = (isinstance(r_name, (int, np.integer)) and 1 <= r_name <= 31 and c_name in core_years and val/max_d > 0.8)
+                    t_col = "black" if is_peak else "white"
+                    fig_alm.add_annotation(x=full_matrix.columns.astype(str)[j], y=full_matrix.index.astype(str)[i], text=str(int(val)), showarrow=False, font=dict(family="Oswald", color=t_col))
+            
+            fig_alm.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=1100, margin=dict(l=0,r=0,t=40,b=0), xaxis=dict(side="top"), yaxis=dict(autorange="reversed", tickmode='linear'))
 
             cm, ci = st.columns([3, 1]) if st.session_state.sel_alm_d else st.columns([1, 0.001])
             with cm:
-                st.dataframe(final_pivot.style.apply(style_isolated_heat, axis=None), use_container_width=True, height=1300, hide_index=True)
+                ev_alm = st.plotly_chart(fig_alm, use_container_width=True, on_select="rerun", key=f"alm_{st.session_state.alm_key}")
+                if ev_alm and "selection" in ev_alm and ev_alm["selection"].get("points"):
+                    pt = ev_alm["selection"]["points"][0]
+                    try:
+                        dv = int(pt["y"])
+                        if 1 <= dv <= 31: 
+                            st.session_state.sel_alm_d, st.session_state.sel_alm_y = dv, int(pt["x"])
+                            st.rerun()
+                    except: pass
 
             if st.session_state.sel_alm_d:
                 with ci:
-                    d, yr = st.session_state.sel_alm_d, st.session_state.sel_alm_y
-                    st.markdown(f"### 📡 {sel_m_name.upper()} {d}, {yr}")
-                    if st.button("❌ CLOSE REPORT", use_container_width=True):
+                    d, yr = st.session_state.sel_alm_d, st.session_state.sel_alm_y; st.markdown(f"### 📡 {sel_m_name.upper()} {d}, {yr}")
+                    if st.button("❌ CLOSE REPORT", use_container_width=True): 
                         st.session_state.sel_alm_d = None; st.rerun()
-                    s_day = m_grid_df[(m_grid_df[dom_col] == d) & (m_grid_df[y_col] == yr)]
+                    s_day = m_df[(m_df[dom_col] == d) & (m_df[y_col] == yr)]
                     if not s_day.empty:
                         st.markdown(f'<div class="stat-header">DAILY LOGS</div><div class="stat-val">{len(s_day):,}</div>', unsafe_allow_html=True)
                         st.markdown(f'<div class="stat-header">MUF REPORTED</div><div class="stat-val">{s_day["Frequency"].max()} MHz</div>', unsafe_allow_html=True)
                         st.markdown(f'<div class="stat-header">UNIQUE DXERS</div><div class="stat-val">{s_day["DXer"].nunique()}</div>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="stat-header">SIGNAL WINDOW</div><div class="stat-val">{s_day["Local_Time"].min()} ➔ {s_day["Local_Time"].max()}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-header">WINDOW</div><div class="stat-val">{s_day["Local_Time"].min()} ➔ {s_day["Local_Time"].max()}</div>', unsafe_allow_html=True)
                         st.markdown('<div class="stat-header">TOP ORIGINS</div>', unsafe_allow_html=True); st.dataframe(s_day.groupby('DXer_State_Prov').size().sort_values(ascending=False).head(5), hide_index=True)
                         st.markdown('<div class="stat-header">FURTHEST</div>', unsafe_allow_html=True); f = s_day.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div><div class="stat-label">{f["Station"]} by {f["DXer"]}</div>', unsafe_allow_html=True)
                         intl = s_day[~s_day['Country'].isin(['USA', 'Canada'])]
@@ -407,26 +372,13 @@ elif selected_page == "TEMPORAL TRENDS":
     elif tv == "Yearly Trends":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_year is not None else st.columns([1, 0.001])
         with col_m:
-            st.markdown("### SEASONAL VOLUME TRENDS")
-            y_data = filt_df.groupby(y_col).size().reset_index(name='Logs').sort_values(y_col)
-            fig_y = go.Figure()
-            fig_y.add_trace(go.Bar(x=y_data[y_col], y=y_data['Logs'], marker_color='#D32F2F', opacity=0.3))
-            fig_y.add_trace(go.Scatter(x=y_data[y_col], y=y_data['Logs'], mode='markers+lines', marker=dict(size=12, color='#D32F2F', line=dict(width=2, color='white'))))
-            fig_y.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=600, showlegend=False, xaxis=dict(title="Local Year", rangeslider=dict(visible=True)))
-            ev_year = st.plotly_chart(fig_y, use_container_width=True, on_select="rerun", key=f"y_chart_{st.session_state.year_map_key}")
+            st.markdown("### SEASONAL VOLUME TRENDS"); y_data = filt_df.groupby(y_col).size().reset_index(name='Logs').sort_values(y_col); fig_y = go.Figure(); fig_y.add_trace(go.Bar(x=y_data[y_col], y=y_data['Logs'], marker_color='#D32F2F', opacity=0.3)); fig_y.add_trace(go.Scatter(x=y_data[y_col], y=y_data['Logs'], mode='markers+lines', marker=dict(size=12, color='#D32F2F', line=dict(width=2, color='white')))); fig_y.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=600, showlegend=False, xaxis=dict(title="Local Year", rangeslider=dict(visible=True))); ev_year = st.plotly_chart(fig_y, use_container_width=True, on_select="rerun", key=f"y_chart_{st.session_state.year_map_key}")
             if ev_year and "selection" in ev_year and ev_year["selection"].get("points"):
-                st.session_state.selected_year = int(ev_year["selection"]["points"][0]["x"])
-                st.rerun()
+                st.session_state.selected_year = int(ev_year["selection"]["points"][0]["x"]); st.rerun()
         if st.session_state.selected_year is not None:
             with col_f:
-                yr = st.session_state.selected_year
-                st.markdown(f"### {yr} SEASON INTEL")
-                if st.button("❌ CLEAR YEAR", use_container_width=True):
-                    st.session_state.selected_year = None
-                    st.session_state.year_map_key += 1
-                    st.rerun()
-                s_y = filt_df[filt_df[y_col].astype(int) == int(yr)]
-                st.markdown(f'<div class="stat-header">SEASON VOLUME</div><div class="stat-val">{len(s_y):,} LOGS</div>', unsafe_allow_html=True)
+                yr = st.session_state.selected_year; st.markdown(f"### {yr} SEASON INTEL"); if st.button("❌ CLEAR YEAR", use_container_width=True): st.session_state.selected_year = None; st.session_state.year_map_key += 1; st.rerun()
+                s_y = filt_df[filt_df[y_col].astype(int) == int(yr)]; st.markdown(f'<div class="stat-header">SEASON VOLUME</div><div class="stat-val">{len(s_y):,} LOGS</div>', unsafe_allow_html=True)
                 if not s_y.empty:
                     st.markdown(f'<div class="stat-header">PEAK MONTH</div><div class="stat-val">{str(s_y[m_name_col].mode().iloc[0]).upper()}</div>', unsafe_allow_html=True)
                     st.markdown(f'<div class="stat-header">MUF REPORTED</div><div class="stat-val">{s_y["Frequency"].max()} MHz</div>', unsafe_allow_html=True)
