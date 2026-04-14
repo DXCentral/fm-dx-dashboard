@@ -23,6 +23,7 @@ if 'selected_year' not in st.session_state: st.session_state.selected_year = Non
 if 'map_key' not in st.session_state: st.session_state.map_key = 500000
 if 'hour_map_key' not in st.session_state: st.session_state.hour_map_key = 600000
 if 'year_map_key' not in st.session_state: st.session_state.year_map_key = 700000
+if 'dist_map_key' not in st.session_state: st.session_state.dist_map_key = 800000
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -71,28 +72,21 @@ def load_data():
         client = bigquery.Client(credentials=credentials, project=credentials.project_id)
         df_logs = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`").to_dataframe()
         df_coords = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`").to_dataframe()
-        
         l_dx, l_st = [c for c in df_logs.columns if 'Concatenated' in c and 'DX' in c][0], [c for c in df_logs.columns if 'Concatenated' in c and 'Station' in c][0]
         c_dx, c_st = [c for c in df_coords.columns if 'Concatenated' in c and 'DX' in c][0], [c for c in df_coords.columns if 'Concatenated' in c and 'Station' in c][0]
-        
         df_logs['join_dx'], df_logs['join_st'] = df_logs[l_dx].str.upper().str.strip(), df_logs[l_st].str.upper().str.strip()
         df_coords['join_dx'], df_coords['join_st'] = df_coords[c_dx].str.upper().str.strip(), df_coords[c_st].str.upper().str.strip()
         df_coords = df_coords.drop_duplicates(subset=['join_dx', 'join_st'])
-        
         df = df_logs.merge(df_coords, on=['join_dx', 'join_st'], how='left', suffixes=('', '_coord'))
-        
         dx_lat, dx_lon = [c for c in df.columns if 'DXer_Latitude' in c or ('DX' in c and 'Lat' in c)][0], [c for c in df.columns if 'DXer_Longitude' in c or ('DX' in c and 'Lon' in c)][0]
         st_lat, st_lon = [c for c in df.columns if 'Station_Lat' in c or ('ST' in c and 'Lat' in c)][0], [c for c in df.columns if 'Station_Long' in c or ('ST' in c and 'Lon' in c)][0]
         for c in [dx_lat, dx_lon, st_lat, st_lon]: df[c] = pd.to_numeric(df[c].astype(str).str.replace('°', '').str.strip(), errors='coerce').astype('float32')
-        
         df['Mid_Lat'], df['Mid_Lon'] = (df[dx_lat] + df[st_lat]) / 2, (df[dx_lon] + df[st_lon]) / 2
         df['Date_Obj'], df['Time_Str'] = pd.to_datetime(df['Local_Date']).dt.date, pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
-        
         dist_col = [c for c in df.columns if 'Distance' in c and 'mi' in c][0]
         dd_col = [c for c in df.columns if 'Distance' in c and 'Distribution' in c][0]
         h_col = next((c for c in df.columns if 'Local' in c and 'Hour' in c), 'Local_Hour')
         y_col = next((c for c in df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
-        
         return df, df['Date_Obj'].max(), dist_col, dd_col, dx_lat, dx_lon, st_lat, st_lon, l_dx, h_col, y_col
     except Exception as e:
         st.error(f"Link Failure: {e}"); return pd.DataFrame(), None, "Distance", "Distance_Distribution", None, None, None, None, "DXer_Location", "Local_Hour", "Local_Year"
@@ -199,7 +193,6 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     mo_col, yr_col = next((c for c in geo_df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name'), next((c for c in geo_df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
     gs = [[0, '#640000'], [0.25, '#D32F2F'], [0.5, '#FF4500'], [0.75, '#FFA500'], [1, '#FFFF00']]
 
-    # --- DISTANCE STATS MODULE (RESTORED REFERENCE LOGIC) ---
     if gv == "Distance Stats":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_tier else st.columns([1, 0.001])
         with col_m:
@@ -207,23 +200,26 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
             st.caption("👈 Click on a Distance Distribution category for more details and statistics")
             d_counts = geo_df.groupby(dd_col).size().reset_index(name='Logs').dropna().sort_values('Logs', ascending=False)
             if not d_counts.empty:
+                # INSTANT TRIGGER LOCKDOWN
                 fig_hub = px.bar(d_counts, x='Logs', y=dd_col, orientation='h', color='Logs', color_continuous_scale=gs, template="plotly_dark")
                 fig_hub.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=400, showlegend=False, xaxis=dict(showgrid=False), yaxis=dict(showgrid=False))
-                ev_hub = st.plotly_chart(fig_hub, use_container_width=True, on_select="rerun", key="dist_hub")
-                if ev_hub and ev_hub.get("selection") and ev_hub["selection"].get("points"):
-                    nt = ev_hub["selection"]["points"][0]["y"]; st.session_state.selected_tier = nt; st.rerun()
+                ev_hub = st.plotly_chart(fig_hub, use_container_width=True, on_select="rerun", key=f"dist_hub_{st.session_state.dist_map_key}")
+                if ev_hub and "selection" in ev_hub and "points" in ev_hub["selection"] and ev_hub["selection"]["points"]:
+                    nt = ev_hub["selection"]["points"][0]["y"]
+                    if st.session_state.selected_tier != nt:
+                        st.session_state.selected_tier = nt; st.rerun()
 
             st.markdown("### THE SEASONALITY PULSE")
             pulse_data = geo_df.groupby(['Local_Month', dd_col]).size().reset_index(name='Logs')
             fig_pulse = px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', color_discrete_sequence=['#D32F2F', '#FFA500', '#FFFFFF', '#888888'], template="plotly_dark")
-            fig_pulse.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=450, margin=dict(t=20))
             st.plotly_chart(fig_pulse, use_container_width=True)
 
         if st.session_state.selected_tier:
             with col_f:
                 tier = st.session_state.selected_tier
                 st.markdown(f"### {tier.upper()} INTEL")
-                if st.button("❌ CLEAR SELECTION", key="cl_dst", use_container_width=True): st.session_state.selected_tier = None; st.rerun()
+                if st.button("❌ CLEAR SELECTION", key="cl_dst", use_container_width=True): 
+                    st.session_state.selected_tier = None; st.session_state.dist_map_key += 1; st.rerun()
                 s_of = geo_df[geo_df[dd_col] == tier]
                 st.markdown('<div class="stat-header">TOTAL LOGS IN TIER</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
                 st.markdown('<div class="stat-header">LIKELIHOOD SCORE</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{(s_of["DXer"].nunique() / geo_df["DXer"].nunique()) * 100:.1f}%</div><div class="stat-label">Of DXers have caught this</div>', unsafe_allow_html=True)
@@ -231,7 +227,6 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 st.markdown('<div class="stat-header">ORIGIN HOTSPOTS</div>', unsafe_allow_html=True); st.dataframe(s_of.groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
                 st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True); t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='L').sort_values('L', ascending=False).head(5); t5['M'] = t5['L']; st.dataframe(t5, column_config={"Frequency":"MHz", "L":st.column_config.NumberColumn("Logs", format="%d"), "M":st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['L'].max() if not t5.empty else 100))}, hide_index=True)
 
-    # --- MAP MODULES ---
     else:
         if gv == "US States": target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
         elif gv == "Canadian Stats": target, scope, loc_mode, gj_url, gj_key = 'Canada', 'north america', 'geojson-id', "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson", "properties.name"
@@ -284,10 +279,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - DXers In Region</div>', unsafe_allow_html=True)
                     fd = pd.to_datetime(s_fr['Local_Date']); st.markdown(f'<div class="stat-label">Start: {get_avg_date(fd.groupby(s_fr["Local_Year"]).min())} | Peak: {get_avg_date(fd)} | End: {get_avg_date(fd.groupby(s_fr["Local_Year"]).max())}</div>', unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
-                st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
-                if not s_of.empty:
-                    f = s_of.sort_values(d_col, ascending=False).iloc[0]
-                    st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div><div class="stat-label">{f["Station"]} by {f["DXer"]}</div>', unsafe_allow_html=True)
+                st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True); f = s_of.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div><div class="stat-label">{f["Station"]} by {f["DXer"]}</div>', unsafe_allow_html=True)
                 st.markdown('<div class="stat-header">LOCAL DXER ACTIVITY</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_fr["DXer"].nunique()} UNIQUE DXERS</div>', unsafe_allow_html=True)
                 st.markdown('<div class="stat-header">TOP RECEPTION PATHS</div>', unsafe_allow_html=True); st.dataframe(s_fr.groupby('State' if target != 'World' else 'Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
                 st.markdown('<div class="stat-header">TOP TRANSMISSION PATHS</div>', unsafe_allow_html=True); st.dataframe(s_of.groupby(dx_st_col if target != 'World' else 'DXer_Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
@@ -315,7 +307,8 @@ elif selected_page == "TEMPORAL TRENDS":
             st.caption("🕒 USE WHITE SLIDER ABOVE TO ZOOM TIMELINE VIEW")
             if ev_hour and "selection" in ev_hour and "points" in ev_hour["selection"] and ev_hour["selection"]["points"]:
                 new_h = int(ev_hour["selection"]["points"][0]["x"])
-                if st.session_state.selected_hour != new_h: st.session_state.selected_hour = new_h; st.rerun()
+                if st.session_state.selected_hour != new_h:
+                    st.session_state.selected_hour = new_h; st.rerun()
 
         if st.session_state.selected_hour is not None:
             with col_f:
