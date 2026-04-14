@@ -102,8 +102,8 @@ from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     selected_page = option_menu("DATA MODULES", 
-        ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ"], 
-        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin"], 
+        ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "STATION & RDS IQ"], 
+        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "broadcast-pin"], 
         default_index=0)
 
 # 4. GLOBAL FILTERS
@@ -325,48 +325,59 @@ elif selected_page == "TEMPORAL TRENDS":
         if not m_df.empty:
             pivot = m_df.pivot_table(index=dom_col, columns=y_col, values='Station', aggfunc='count').fillna(0).astype(int)
             pivot = pivot.reindex(range(1, 32), fill_value=0)
+            
+            # CALCULATE SUMMARY COLS (ROUNDED)
             pivot['TOTAL LOGS'] = pivot.sum(axis=1)
             pivot['ACTIVE YEARS'] = (pivot.iloc[:, :-1] > 0).sum(axis=1)
-            pivot['AVG PER YEAR'] = (pivot['TOTAL LOGS'] / pivot['ACTIVE YEARS']).replace([np.inf, -np.inf], 0).fillna(0).round(1)
+            pivot['AVG PER YEAR'] = (pivot['TOTAL LOGS'] / pivot['ACTIVE YEARS']).replace([np.inf, -np.inf], 0).fillna(0).round(0).astype(int)
             
+            # CALCULATE SUMMARY ROWS (ROUNDED)
             footer = pd.DataFrame(index=['TOTAL LOGS', 'ACTIVE DAYS', 'AVG PER DAY', 'DAYS >= 100', 'DAYS >= 500', 'DAYS >= 1000'], columns=pivot.columns)
             for col in pivot.columns:
                 if col in ['AVG PER YEAR']: continue
                 data = pivot.loc[1:31, col]
-                footer.at['TOTAL LOGS', col] = data.sum()
-                footer.at['ACTIVE DAYS', col] = (data > 0).sum()
-                footer.at['AVG PER DAY', col] = (data.sum() / (data > 0).sum() if (data > 0).sum() > 0 else 0)
-                footer.at['DAYS >= 100', col] = (data >= 100).sum()
-                footer.at['DAYS >= 500', col] = (data >= 500).sum()
-                footer.at['DAYS >= 1000', col] = (data >= 1000).sum()
+                footer.at['TOTAL LOGS', col] = int(data.sum())
+                footer.at['ACTIVE DAYS', col] = int((data > 0).sum())
+                footer.at['AVG PER DAY', col] = int(round(data.sum() / (data > 0).sum() if (data > 0).sum() > 0 else 0))
+                footer.at['DAYS >= 100', col] = int((data >= 100).sum())
+                footer.at['DAYS >= 500', col] = int((data >= 500).sum())
+                footer.at['DAYS >= 1000', col] = int((data >= 1000).sum())
             
-            final_pivot = pd.concat([pivot, footer.round(1)])
+            final_pivot = pd.concat([pivot, footer])
+            # Reset index to allow manual width config on the first column
+            final_pivot = final_pivot.reset_index().rename(columns={'index': 'DAY/METRIC'})
             
-            # --- THE ISOLATED HEAT ENGINE (V163) ---
-            def style_almanac_tactical(df):
+            def style_almanac_refined(df):
                 styles = pd.DataFrame('', index=df.index, columns=df.columns)
-                # Max value based only on core year/day matrix
-                core_matrix = df.iloc[:31, :-3]
+                # Calibrate scale ONLY on core year/day matrix
+                core_val_cols = [c for c in df.columns if c not in ['DAY/METRIC', 'TOTAL LOGS', 'ACTIVE YEARS', 'AVG PER YEAR']]
+                core_matrix = df.iloc[:31][core_val_cols]
                 max_daily = core_matrix.max().max() if not core_matrix.empty else 100
                 
-                for r in df.index:
+                for r_idx in df.index:
+                    day_label = df.at[r_idx, 'DAY/METRIC']
                     for c in df.columns:
-                        val = df.at[r, c]
-                        # Apply heatmap only to core days and actual year columns
-                        if isinstance(r, (int, np.integer)) and 1 <= r <= 31 and c not in ['TOTAL LOGS', 'ACTIVE YEARS', 'AVG PER YEAR']:
+                        val = df.at[r_idx, c]
+                        # Apply heatmap ONLY to core days (1-31) and actual year columns
+                        if isinstance(day_label, (int, np.integer)) and 1 <= day_label <= 31 and c in core_val_cols:
                             if val > 0:
                                 rel = min(val / max_daily, 1.0)
                                 if rel > 0.8: bg, fg = '#FFFF00', '#000000'
                                 elif rel > 0.5: bg, fg = '#FFA500', '#FFFFFF'
                                 elif rel > 0.2: bg, fg = '#D32F2F', '#FFFFFF'
                                 else: bg, fg = '#640000', '#FFFFFF'
-                                styles.at[r, c] = f'background-color: {bg}; color: {fg};'
+                                styles.at[r_idx, c] = f'background-color: {bg}; color: {fg};'
                         else:
-                            # Frames (Summary Columns and Footer Rows) are Black with White text
-                            styles.at[r, c] = 'background-color: #000000; color: #FFFFFF; font-weight: bold;'
+                            # Frames (Summary Columns/Rows) are Locked Black
+                            styles.at[r_idx, c] = 'background-color: #000000; color: #FFFFFF; font-weight: bold;'
                 return styles
 
-            st.dataframe(final_pivot.style.apply(style_almanac_tactical, axis=None), use_container_width=True, height=900)
+            st.dataframe(
+                final_pivot.style.apply(style_almanac_refined, axis=None), 
+                use_container_width=True, 
+                height=None, # Shows full table, no internal scroll
+                column_config={"DAY/METRIC": st.column_config.Column(width="medium")} # Prevents truncation
+            )
         else:
             st.warning(f"No signal intelligence recorded for {sel_m_name} in current filter set.")
 
