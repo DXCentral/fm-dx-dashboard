@@ -159,7 +159,7 @@ elif selected_page == "ES-CLOUD TRACKER":
             map_df = filt_df[filt_df['Date_Obj'] == date_sel]
         else:
             date_range = st.date_input("Select Date Range", value=(avail_days[0], avail_days[-1]))
-            if len(date_range) == 2: map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
+            if len(date_range) == 2: map_df = filt_df[(filt_df['Date_Obj'] >= range_on[0]) & (filt_df['Date_Obj'] <= range_on[1])]
             else: map_df = filt_df[filt_df['Date_Obj'] == date_range[0]]
         speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "3x": {"delay": 0.05, "step": 3}, "4x": {"delay": 0.01, "step": 4}}
         play_speed = st.selectbox("Playback Speed", options=list(speed_sets.keys()), index=1)
@@ -361,7 +361,7 @@ elif selected_page == "TEMPORAL TRENDS":
                             styles.at[r_idx, c] = 'background-color: #000000; color: #FFFFFF; font-weight: bold;'
                 return styles
 
-            st.dataframe(final_pivot.style.apply(style_almanac_robust, axis=None), use_container_width=True, height='auto', column_config={"DAY/METRIC": st.column_config.Column(width="large")})
+            st.dataframe(final_pivot.style.apply(style_almanac_robust, axis=None), use_container_width=True, height=1300, hide_index=True)
         else:
             st.warning(f"No signal intelligence recorded for {sel_m_name} in current filter set.")
 
