@@ -26,6 +26,7 @@ if 'map_key' not in st.session_state: st.session_state.map_key = 500000
 if 'hour_map_key' not in st.session_state: st.session_state.hour_map_key = 600000
 if 'year_map_key' not in st.session_state: st.session_state.year_map_key = 700000
 if 'dist_map_key' not in st.session_state: st.session_state.dist_map_key = 800000
+if 'intl_map_key' not in st.session_state: st.session_state.intl_map_key = 900000
 if 'almanac_month' not in st.session_state: st.session_state.almanac_month = "June"
 
 if st.session_state.full_screen:
@@ -311,7 +312,6 @@ elif selected_page == "TEMPORAL TRENDS":
                     footer.at['TOTAL LOGS', col] = int(d_slice.sum()); footer.at['ACTIVE DAYS', col] = int(active_count); footer.at['AVG/DAY', col] = int(round(d_slice.sum() / active_count if active_count > 0 else 0))
                     footer.at['DAYS >= 100', col] = int((d_slice >= 100).sum()); footer.at['DAYS >= 500', col] = int((d_slice >= 500).sum())
                 final_pivot = pd.concat([pivot, footer]).reset_index().rename(columns={'index': 'DAY/METRIC'})
-                
                 def style_almanac(df):
                     styles = pd.DataFrame('', index=df.index, columns=df.columns); core_y = [c for c in df.columns if str(c).isdigit()]; core_matrix = df.iloc[:31].get(core_y, pd.DataFrame()); max_v = core_matrix.max().max() if not core_matrix.empty else 100
                     for r_idx in df.index:
@@ -358,7 +358,7 @@ elif selected_page == "TEMPORAL TRENDS":
             fig_dens.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
             st.plotly_chart(fig_dens, use_container_width=True)
 
-        # 3. INTERNATIONAL SEASONAL FLOW
+        # 3. INTERNATIONAL SEASONAL FLOW (FLYOUT ARCHITECTURE)
         st.markdown("#### 🌎 INTERNATIONAL SEASONAL FLOW")
         st.caption("👈 Click on any country or month segment for tactical intelligence.")
         intl_raw = filt_df[~filt_df['Country'].isin(['USA', 'Canada'])].copy()
@@ -366,11 +366,11 @@ elif selected_page == "TEMPORAL TRENDS":
             intl_raw['Country'] = intl_raw['Country'].astype(str)
             intl_raw[m_name_col] = intl_raw[m_name_col].astype(str)
             intl_flow = intl_raw.groupby(['Country', m_name_col]).size().reset_index(name='Logs')
-            intl_flow['Logs'] = intl_flow['Logs'].astype(float)
             
-            intl_col1, intl_col2 = st.columns([3, 1]) if st.session_state.selected_intl_country else st.columns([1, 0.001])
+            # Flyout Logic Split
+            col_intl_m, col_intl_f = st.columns([3, 1]) if st.session_state.selected_intl_country else st.columns([1, 0.001])
             
-            with intl_col1:
+            with col_intl_m:
                 fig_intl = px.bar(
                     intl_flow, x='Logs', y='Country', color=m_name_col, orientation='h',
                     template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00']
@@ -379,31 +379,46 @@ elif selected_page == "TEMPORAL TRENDS":
                     barnorm='percent', height=500, barmode='stack', yaxis={'categoryorder':'total ascending'},
                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="% Monthly Distribution"
                 )
-                ev_intl = st.plotly_chart(fig_intl, use_container_width=True, on_select="rerun", key="intl_flow_chart")
+                ev_intl = st.plotly_chart(fig_intl, use_container_width=True, on_select="rerun", key=f"intl_bar_{st.session_state.intl_map_key}")
                 
                 if ev_intl and ev_intl.get("selection") and ev_intl["selection"].get("points"):
-                    st.session_state.selected_intl_country = ev_intl["selection"]["points"][0]["y"]
-                    st.rerun()
-            
+                    new_intl = ev_intl["selection"]["points"][0]["y"]
+                    if st.session_state.selected_intl_country != new_intl:
+                        st.session_state.selected_intl_country = new_intl
+                        st.rerun()
+
             if st.session_state.selected_intl_country:
-                with intl_col2:
+                with col_intl_f:
                     c_sel = st.session_state.selected_intl_country
                     st.markdown(f"### 📡 {c_sel.upper()} INTEL")
-                    if st.button(f"❌ CLEAR {c_sel.upper()}"):
+                    if st.button("❌ CLEAR COUNTRY", use_container_width=True):
                         st.session_state.selected_intl_country = None
+                        st.session_state.intl_map_key += 1
                         st.rerun()
                     
                     c_df = intl_raw[intl_raw['Country'] == c_sel]
-                    c_rep = c_df.groupby(m_name_col).agg({
-                        'Frequency': 'max',
-                        'Station': 'count',
-                        d_col: 'max'
-                    })
-                    # Renaming broken down into simple safe steps
-                    c_rep = c_rep.rename(columns={'Frequency': 'Peak MUF'})
-                    c_rep = c_rep.rename(columns={'Station': 'Logs'})
-                    c_rep = c_rep.rename(columns={d_col: 'Max Mi'})
-                    st.dataframe(c_rep, use_container_width=True)
+                    total_c_logs = len(c_df)
+                    
+                    c_grp = c_df.groupby(m_name_col).size().reset_index(name='Logs')
+                    c_grp['% of Total'] = (c_grp['Logs'] / total_c_logs) * 100
+                    c_grp['M'] = c_grp['% of Total']
+                    
+                    st.markdown('<div class="stat-header">MONTHLY DISTRIBUTION</div>', unsafe_allow_html=True)
+                    st.dataframe(
+                        c_grp, 
+                        column_config={
+                            m_name_col: "Month", 
+                            "Logs": "Total Logs",
+                            "% of Total": st.column_config.NumberColumn("%", format="%.1f%%"),
+                            "M": st.column_config.ProgressColumn("", format="", min_value=0, max_value=100)
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                    
+                    st.markdown('<div class="stat-header">PEAK SIGNAL INTEL</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{c_df["Frequency"].max()} MHz</div><div class="stat-label">Maximum MUF Recorded</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{c_df[d_col].max():,.0f} MI</div><div class="stat-label">Maximum Distance Reported</div>', unsafe_allow_html=True)
 
     elif tv == "Yearly Trends":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_year is not None else st.columns([1, 0.001])
