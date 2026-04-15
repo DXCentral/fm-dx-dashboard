@@ -143,7 +143,7 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state, '
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. DASHBOARD OVERVIEW
+# 5. MODULE 1: DASHBOARD OVERVIEW
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
@@ -155,7 +155,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. ES-CLOUD TRACKER
+# 6. MODULE 2: ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -190,7 +190,7 @@ elif selected_page == "ES-CLOUD TRACKER":
             if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
-# 7. GEOGRAPHIC ANALYSIS
+# 7. MODULE 3: GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
@@ -338,7 +338,7 @@ elif selected_page == "TEMPORAL TRENDS":
 
         # 2. SEASONAL DENSITY MATRIX
         st.markdown("#### 📊 SEASONAL DENSITY MATRIX")
-        st.caption("👈 Shows the percentage of days in each month/year that recorded at least one Es log. A 'hotter' Signal Red/Nuclear Yellow intensity indicates high seasonal density.")
+        st.caption("👈 Percentage of days in each month/year with at least one reported Es log. Red/Yellow intensity indicates high density.")
         m_days = {"May": 31, "June": 30, "July": 31, "August": 31}
         density_data = filt_df[filt_df[m_name_col].isin(list(m_days.keys()))]
         if not density_data.empty:
@@ -350,9 +350,8 @@ elif selected_page == "TEMPORAL TRENDS":
             density_pivot.loc['SEASON TOTAL'] = (density_data.groupby(y_col)['Date_Obj'].nunique() / 123) * 100
             density_pivot['AVERAGES'] = density_pivot.mean(axis=1)
             density_pivot.columns = [str(c) for c in density_pivot.columns]
-            # Formatted text matrix with % signs
-            dens_text = density_pivot.applymap(lambda x: f"{x:.1f}%")
-            # Heatmap with reversed colors (Red/Yellow = High)
+            # Replace applymap with map for newer Pandas
+            dens_text = density_pivot.map(lambda x: f"{x:.1f}%")
             fig_dens = px.imshow(density_pivot, text_auto=False, color_continuous_scale='YlOrRd_r', labels=dict(color="% Density"), template="plotly_dark")
             fig_dens.update_traces(text=dens_text.values, texttemplate="%{text}")
             fig_dens.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
@@ -376,6 +375,7 @@ elif selected_page == "TEMPORAL TRENDS":
                     st.session_state.selected_intl_country = None; st.rerun()
                 c_df = intl_raw[intl_raw['Country'] == c_sel]
                 c_grp = c_df.groupby(m_name_col)
+                # Multi-line safely structured to avoid GitHub/Syntax errors
                 c_rep = c_grp.agg({
                     'Frequency': 'max',
                     'Station': 'count',
