@@ -17,7 +17,8 @@ state_keys = {
     'full_screen': False, 'p_idx': 0, 'playing': False, 'reset_count': 0,
     'selected_state': None, 'selected_tier': None, 'selected_hour': None,
     'selected_year': None, 'map_key': 500000, 'hour_map_key': 600000,
-    'year_map_key': 700000, 'dist_map_key': 800000, 'almanac_month': "June"
+    'year_map_key': 700000, 'dist_map_key': 800000, 'almanac_month': "June",
+    'selected_intl_country': None
 }
 for key, default in state_keys.items():
     if key not in st.session_state: st.session_state[key] = default
@@ -118,21 +119,17 @@ if not st.session_state.full_screen:
         f_stat = r1[2].selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key=f"f3_{rk}")
         f_state = r1[3].selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key=f"f4_{rk}")
         f_ctry = r1[4].selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key=f"f5_{rk}")
-        
         f_dxco = r2[0].selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().astype(str).tolist()), key=f"f6_{rk}")
         f_dxst = r2[1].selectbox("DXer State/Prov", ["All"] + sorted(df[dx_st_col].dropna().unique().astype(str).tolist()), key=f"f7_{rk}")
         f_month = r2[2].selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key=f"f8_{rk}")
         f_year = r2[3].selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key=f"f9_{rk}")
         f_day = r2[4].selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key=f"f10_{rk}")
-        
         f_dist = r3[0].selectbox("Distance Dist.", ["All"] + sorted(df[dd_col].dropna().unique().astype(str).tolist()), key=f"f11_{rk}")
         f_reg = r3[1].selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key=f"f12_{rk}")
         rds_c = 'RDS Decode?' if 'RDS Decode?' in df.columns else 'RDS Decode'
         f_rds = r3[2].selectbox("RDS Decode?", ["All"] + (sorted(df[rds_c].dropna().unique().astype(str).tolist()) if rds_c in df.columns else []), key=f"f13_{rk}")
-        
         if st.button("RESET ALL FILTERS"): 
-            st.session_state.reset_count += 1
-            st.rerun()
+            st.session_state.reset_count += 1; st.rerun()
 else:
     f_freq, f_dxer, f_stat, f_state, f_ctry, f_dxco, f_dxst, f_month, f_year, f_day, f_dist, f_reg, f_rds = ["All"] * 13
 
@@ -246,31 +243,18 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 if target == 'World': s_of, s_fr = geo_df[geo_df['MapCountry'] == sel], geo_df[geo_df['DXer_Country'] == sel]
                 else: s_of, s_fr = geo_df[geo_df['Country'] == target][geo_df['State'] == sel], geo_df[geo_df[dx_st_col] == sel]
                 st.markdown('<div class="stat-header">TOTAL LOGS IN DATASET</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
-                
                 if not s_of.empty:
                     top_st = s_of.groupby(['Frequency', 'Station', 'City']).size().idxmax()
                     st.markdown('<div class="stat-header">MOST HEARD STATION</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{top_st[1]}</div><div class="stat-label">{top_st[0]} MHz • {top_st[2]} • {s_of.groupby(["Frequency", "Station", "City"]).size().max()} Logs</div>', unsafe_allow_html=True)
-                    st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
-                    m_c, y_c = s_of[m_name_col].value_counts(), s_of[y_col].value_counts()
+                    st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True); m_c, y_c = s_of[m_name_col].value_counts(), s_of[y_col].value_counts()
                     st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Month</div><div class="stat-val" style="margin-top:0px;">{str(m_c.idxmax()).upper()} ({m_c.max()})</div></div>', unsafe_allow_html=True)
                     st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax()} ({y_c.max()})</div></div>', unsafe_allow_html=True)
-                    
-                    st.markdown('<div class="window-box">', unsafe_allow_html=True)
-                    st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - Stations From Region</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="window-box">', unsafe_allow_html=True); st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - Stations From Region</div>', unsafe_allow_html=True)
                     od = pd.to_datetime(s_of['Local_Date']); st.markdown(f'<div class="stat-label">Start: {get_avg_date(od.groupby(s_of[y_col]).min())} | Peak: {get_avg_date(od)} | End: {get_avg_date(od.groupby(s_of[y_col]).max())}</div>', unsafe_allow_html=True)
                     st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - DXers In Region</div>', unsafe_allow_html=True)
-                    fd = pd.to_datetime(s_fr['Local_Date']); st.markdown(f'<div class="stat-label">Start: {get_avg_date(fd.groupby(s_fr[y_col]).min())} | Peak: {get_avg_date(fd)} | End: {get_avg_date(fd.groupby(s_fr[y_col]).max())}</div>', unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-
-                    st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
-                    f = s_of.sort_values(d_col, ascending=False).iloc[0]
-                    st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]} by {f["DXer"]}, {f[dx_loc_col]} on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
-
-                st.markdown('<div class="stat-header">LOCAL DXER ACTIVITY</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_fr["DXer"].nunique()} UNIQUE DXERS</div>', unsafe_allow_html=True)
-                st.markdown('<div class="stat-header">TOP RECEPTION PATHS</div>', unsafe_allow_html=True); st.dataframe(s_fr.groupby('State' if target != 'World' else 'Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
-                st.markdown('<div class="stat-header">TOP TRANSMISSION PATHS</div>', unsafe_allow_html=True); st.dataframe(s_of.groupby(dx_st_col if target != 'World' else 'DXer_Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
-                st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True); t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='L').sort_values('L', ascending=False).head(5); t5['M'] = t5['L']; st.dataframe(t5, column_config={"Frequency":"MHz", "L":st.column_config.NumberColumn("Logs", format="%d"), "M":st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['L'].max() if not t5.empty else 100))}, hide_index=True)
+                    fd = pd.to_datetime(s_fr['Local_Date']); st.markdown(f'<div class="stat-label">Start: {get_avg_date(fd.groupby(s_fr[y_col]).min())} | Peak: {get_avg_date(fd)} | End: {get_avg_date(fd.groupby(s_fr[y_col]).max())}</div>', unsafe_allow_html=True); st.markdown('</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True); f = s_of.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]} by {f["DXer"]}, {f[dx_loc_col]} on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
+                st.markdown('<div class="stat-header">LOCAL DXER ACTIVITY</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_fr["DXer"].nunique()} UNIQUE DXERS</div>', unsafe_allow_html=True); st.markdown('<div class="stat-header">TOP RECEPTION PATHS</div>', unsafe_allow_html=True); st.dataframe(s_fr.groupby('State' if target != 'World' else 'Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True); st.markdown('<div class="stat-header">TOP TRANSMISSION PATHS</div>', unsafe_allow_html=True); st.dataframe(s_of.groupby(dx_st_col if target != 'World' else 'DXer_Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True); st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True); t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='L').sort_values('L', ascending=False).head(5); t5['M'] = t5['L']; st.dataframe(t5, column_config={"Frequency":"MHz", "L":st.column_config.NumberColumn("Logs", format="%d"), "M":st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['L'].max() if not t5.empty else 100))}, hide_index=True)
 
 # 8. TEMPORAL TRENDS
 elif selected_page == "TEMPORAL TRENDS":
@@ -288,117 +272,109 @@ elif selected_page == "TEMPORAL TRENDS":
             ev_hour = st.plotly_chart(fig_h, use_container_width=True, on_select="rerun", key=f"h_chart_{st.session_state.hour_map_key}")
             if ev_hour and "selection" in ev_hour and ev_hour["selection"]["points"]:
                 new_h = int(ev_hour["selection"]["points"][0]["x"])
-                if st.session_state.selected_hour != new_h:
-                    st.session_state.selected_hour = new_h; st.rerun()
+                if st.session_state.selected_hour != new_h: st.session_state.selected_hour = new_h; st.rerun()
         if st.session_state.selected_hour is not None:
             with col_f:
                 h = st.session_state.selected_hour; st.markdown(f"### HOUR {h:02d}:00 INTEL")
-                if st.button("❌ CLEAR HOUR", key="cl_hr", use_container_width=True):
-                    st.session_state.selected_hour = None; st.session_state.hour_map_key += 1; st.rerun()
+                if st.button("❌ CLEAR HOUR", key="cl_hr", use_container_width=True): st.session_state.selected_hour = None; st.session_state.hour_map_key += 1; st.rerun()
                 s_h = filt_df[filt_df[h_col].astype(int) == int(h)]
                 st.markdown('<div class="stat-header">HOUR MISSION SUMMARY</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{len(s_h):,} LOGS</div><div class="stat-label">{(len(s_h)/len(filt_df))*100:.1f}% of Global Volume</div>', unsafe_allow_html=True)
                 if not s_h.empty:
-                    st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
-                    m_h, y_h = s_h[m_name_col].value_counts(), s_h[y_col].value_counts()
+                    st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True); m_h, y_h = s_h[m_name_col].value_counts(), s_h[y_col].value_counts()
                     st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Month</div><div class="stat-val" style="margin-top:0px;">{str(m_h.idxmax()).upper()} ({m_h.max()})</div></div>', unsafe_allow_html=True)
                     st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_h.idxmax()} ({y_h.max()})</div></div>', unsafe_allow_html=True)
-                    
                     st.markdown('<div class="stat-header">LOCATION DOMINANCE</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_h[dx_loc_col].mode().iloc[0]}</div><div class="stat-label">Most Active DXer Location</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_h["State"].mode().iloc[0]}</div><div class="stat-label">Most Active Station State</div>', unsafe_allow_html=True)
                     st.markdown('<div class="stat-header">TOP 5 PATHS (DXER ➔ STATION STATE/PROV)</div>', unsafe_allow_html=True); paths = s_h.groupby([dx_st_col, 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5); paths['Path'] = paths[dx_st_col].astype(str) + " ➔ " + paths['State'].astype(str); st.dataframe(paths[['Path', 'L']], column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
-                    
-                    st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
-                    f = s_h.sort_values(d_col, ascending=False).iloc[0]
-                    st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]} by {f["DXer"]}, {f[dx_loc_col]} on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True); f = s_h.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]} by {f["DXer"]}, {f[dx_loc_col]} on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
 
     elif tv == "Monthly Almanac":
         st.markdown("### MONTHLY LOG ALMANAC"); st.caption("Select a month to view seasonal density. Pick a date below to view tactical reports.")
         sel_m_name = st.pills("SELECT MONTH", ["May", "June", "July", "August"], default=st.session_state.almanac_month)
         st.session_state.almanac_month = sel_m_name
         
+        # FEATURE 1: SEASONAL DENSITY MATRIX
+        st.markdown("#### 📊 SEASONAL DENSITY MATRIX")
+        m_days = {"May": 31, "June": 30, "July": 31, "August": 31}
+        density_data = filt_df[filt_df[m_name_col].isin(list(m_days.keys()))]
+        if not density_data.empty:
+            density_pivot = density_data.groupby([m_name_col, y_col])['Date_Obj'].nunique().unstack(fill_value=0)
+            for m, total_d in m_days.items():
+                if m in density_pivot.index: density_pivot.loc[m] = (density_pivot.loc[m] / total_d) * 100
+            density_pivot.loc['SEASON TOTAL'] = (density_data.groupby(y_col)['Date_Obj'].nunique() / 124) * 100
+            density_pivot['AVERAGES'] = density_pivot.mean(axis=1)
+            st.dataframe(density_pivot.style.format("{:.1f}%").background_gradient(cmap='YlOrRd', axis=None), use_container_width=True)
+
+        # FEATURE 2: INTERNATIONAL SEASONAL FLOW
+        st.markdown("#### 🌎 INTERNATIONAL SEASONAL FLOW")
+        intl_data = filt_df[~filt_df['Country'].isin(['USA', 'Canada'])]
+        if not intl_data.empty:
+            intl_flow = intl_data.groupby(['Country', m_name_col]).size().reset_index(name='Logs')
+            fig_intl = px.bar(intl_flow, x='Logs', y='Country', color=m_name_col, orientation='h', template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00'])
+            fig_intl.update_layout(height=500, barmode='stack', yaxis={'categoryorder':'total ascending'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+            ev_intl = st.plotly_chart(fig_intl, use_container_width=True, on_select="rerun", key="intl_flow_chart")
+            if ev_intl and ev_intl.get("selection") and ev_intl["selection"].get("points"):
+                st.session_state.selected_intl_country = ev_intl["selection"]["points"][0]["y"]
+            
+            if st.session_state.selected_intl_country:
+                c_sel = st.session_state.selected_intl_country
+                st.markdown(f"### 📡 {c_sel.upper()} MONTHLY INTEL")
+                if st.button(f"❌ CLEAR {c_sel.upper()}"): st.session_state.selected_intl_country = None; st.rerun()
+                c_df = intl_data[intl_data['Country'] == c_sel]
+                st.dataframe(c_df.groupby(m_name_col).agg({'Frequency': 'max', 'Station': 'count', d_col: 'max'}).rename(columns={'Frequency':'Peak MUF', 'Station':'Total Logs', d_col:'Max Miles'}), use_container_width=True)
+
+        # EXISTING: TACTICAL DATE FORENSICS
         avail_m_df = filt_df[filt_df[m_name_col] == sel_m_name]
         if not avail_m_df.empty:
             st.markdown("#### 📅 TACTICAL DATE FORENSICS")
             sel_date = st.date_input("SELECT DATE FOR INTEL REPORT", value=None, min_value=avail_m_df['Date_Obj'].min(), max_value=avail_m_df['Date_Obj'].max())
             cm, ci = st.columns([3, 1]) if sel_date else st.columns([1, 0.001])
             with cm:
-                pivot = avail_m_df.pivot_table(index=dom_col, columns=y_col, values='Station', aggfunc='count').fillna(0).astype(int)
-                pivot = pivot.reindex(range(1, 32), fill_value=0)
-                pivot['TOTAL LOGS'] = pivot.sum(axis=1)
-                pivot['ACTIVE YEARS'] = (pivot.drop(columns=['TOTAL LOGS']) > 0).sum(axis=1)
-                pivot['AVG/YR'] = (pivot['TOTAL LOGS'] / pivot['ACTIVE YEARS']).replace([np.inf, -np.inf], 0).fillna(0).round(0).astype(int)
-                
+                pivot = avail_m_df.pivot_table(index=dom_col, columns=y_col, values='Station', aggfunc='count').fillna(0).astype(int).reindex(range(1, 32), fill_value=0)
+                pivot['TOTAL LOGS'] = pivot.sum(axis=1); pivot['ACTIVE YEARS'] = (pivot.drop(columns=['TOTAL LOGS']) > 0).sum(axis=1); pivot['AVG/YR'] = (pivot['TOTAL LOGS'] / pivot['ACTIVE YEARS']).replace([np.inf, -np.inf], 0).fillna(0).round(0).astype(int)
                 f_rows = ['TOTAL LOGS', 'ACTIVE DAYS', 'AVG/DAY', 'DAYS >= 100', 'DAYS >= 500']
                 footer = pd.DataFrame(index=f_rows, columns=pivot.columns).fillna(0)
                 for col in pivot.columns:
-                    d_slice = pivot.loc[1:31, col]
-                    active_count = (d_slice > 0).sum()
-                    footer.at['TOTAL LOGS', col] = int(d_slice.sum())
-                    footer.at['ACTIVE DAYS', col] = int(active_count)
-                    footer.at['AVG/DAY', col] = int(round(d_slice.sum() / active_count if active_count > 0 else 0))
-                    footer.at['DAYS >= 100', col] = int((d_slice >= 100).sum())
-                    footer.at['DAYS >= 500', col] = int((d_slice >= 500).sum())
+                    d_slice = pivot.loc[1:31, col]; active_count = (d_slice > 0).sum()
+                    footer.at['TOTAL LOGS', col] = int(d_slice.sum()); footer.at['ACTIVE DAYS', col] = int(active_count); footer.at['AVG/DAY', col] = int(round(d_slice.sum() / active_count if active_count > 0 else 0))
+                    footer.at['DAYS >= 100', col] = int((d_slice >= 100).sum()); footer.at['DAYS >= 500', col] = int((d_slice >= 500).sum())
                 final_pivot = pd.concat([pivot, footer]).reset_index().rename(columns={'index': 'DAY/METRIC'})
-
                 def style_almanac(df):
                     styles = pd.DataFrame('', index=df.index, columns=df.columns)
-                    core_y = [c for c in df.columns if str(c).isdigit()]
-                    core_matrix = df.iloc[:31].get(core_y, pd.DataFrame())
-                    max_v = core_matrix.max().max() if not core_matrix.empty else 100
+                    core_y = [c for c in df.columns if str(c).isdigit()]; core_matrix = df.iloc[:31].get(core_y, pd.DataFrame()); max_v = core_matrix.max().max() if not core_matrix.empty else 100
                     for r_idx in df.index:
                         label = df.at[r_idx, 'DAY/METRIC']
                         for c in df.columns:
                             val = df.at[r_idx, c]
                             if isinstance(label, int) and 1 <= label <= 31 and c in core_y:
                                 if val > 0:
-                                    rel = val / max_v
-                                    bg = '#FFFF00' if rel > 0.8 else ('#FFA500' if rel > 0.5 else ('#D32F2F' if rel > 0.2 else '#640000'))
+                                    rel = val / max_v; bg = '#FFFF00' if rel > 0.8 else ('#FFA500' if rel > 0.5 else ('#D32F2F' if rel > 0.2 else '#640000'))
                                     styles.at[r_idx, c] = f'background-color: {bg}; color: {"black" if rel > 0.8 else "white"};'
                             else: styles.at[r_idx, c] = 'background-color: #000000; color: #FFFFFF; font-weight: bold;'
                     return styles
                 st.dataframe(final_pivot.style.apply(style_almanac, axis=None), use_container_width=True, height=1000, hide_index=True)
-            
             if sel_date:
                 with ci:
-                    st.markdown(f"### 📡 TACTICAL REPORT: {sel_date.strftime('%b %d, %Y')}")
-                    s_day = avail_m_df[avail_m_df['Date_Obj'] == sel_date]
+                    st.markdown(f"### 📡 TACTICAL REPORT: {sel_date.strftime('%b %d, %Y')}"); s_day = avail_m_df[avail_m_df['Date_Obj'] == sel_date]
                     if not s_day.empty:
                         st.metric("Total Logs", f"{len(s_day):,}"); st.metric("MUF Recorded", f"{s_day['Frequency'].max()} MHz"); st.metric("Unique DXers", s_day['DXer'].nunique())
-                        
-                        st.markdown('<div class="stat-header">LOCATION DOMINANCE</div>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="stat-val">{s_day[dx_loc_col].mode().iloc[0]}</div><div class="stat-label">Most Active DXer Location</div>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="stat-val">{s_day["State"].mode().iloc[0]}</div><div class="stat-label">Most Active Station State</div>', unsafe_allow_html=True)
-
-                        st.markdown('<div class="stat-header">TOP 5 PATHS (DXER ➔ STATION STATE/PROV)</div>', unsafe_allow_html=True)
-                        m_paths = s_day.groupby([dx_st_col, 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
-                        m_paths['Path'] = m_paths[dx_st_col].astype(str) + " ➔ " + m_paths['State'].astype(str)
-                        st.dataframe(m_paths[['Path', 'L']], hide_index=True)
-
-                        st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
-                        f = s_day.sort_values(d_col, ascending=False).iloc[0]
-                        st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]} by {f["DXer"]}, {f[dx_loc_col]} on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
-                        
+                        st.markdown('<div class="stat-header">LOCATION DOMINANCE</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_day[dx_loc_col].mode().iloc[0]}</div><div class="stat-label">Most Active DXer Location</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_day["State"].mode().iloc[0]}</div><div class="stat-label">Most Active Station State</div>', unsafe_allow_html=True)
+                        st.markdown('<div class="stat-header">TOP 5 PATHS (DXER ➔ STATION STATE/PROV)</div>', unsafe_allow_html=True); m_paths = s_day.groupby([dx_st_col, 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5); m_paths['Path'] = m_paths[dx_st_col].astype(str) + " ➔ " + m_paths['State'].astype(str); st.dataframe(m_paths[['Path', 'L']], hide_index=True)
+                        st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True); f = s_day.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]} by {f["DXer"]}, {f[dx_loc_col]} on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
                         intl = s_day[~s_day['Country'].isin(['USA', 'Canada'])]
-                        if not intl.empty:
-                            st.markdown('<div class="stat-header">TOP INTERNATIONAL COUNTRIES</div>', unsafe_allow_html=True)
-                            st.dataframe(intl.groupby('Country').size().reset_index(name='L').sort_values('L', ascending=False).head(3), hide_index=True)
+                        if not intl.empty: st.markdown('<div class="stat-header">TOP INTERNATIONAL COUNTRIES</div>', unsafe_allow_html=True); st.dataframe(intl.groupby('Country').size().reset_index(name='L').sort_values('L', ascending=False).head(3), hide_index=True)
                     else: st.warning("No signal intelligence for selected date.")
 
     elif tv == "Yearly Trends":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_year is not None else st.columns([1, 0.001])
         with col_m:
             st.markdown("### SEASONAL VOLUME TRENDS"); y_data = filt_df.groupby(y_col).size().reset_index(name='Logs').sort_values(y_col); fig_y = go.Figure(); fig_y.add_trace(go.Bar(x=y_data[y_col], y=y_data['Logs'], marker_color='#D32F2F', opacity=0.3)); fig_y.add_trace(go.Scatter(x=y_data[y_col], y=y_data['Logs'], mode='markers+lines', marker=dict(size=12, color='#D32F2F', line=dict(width=2, color='white')))); fig_y.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=600, showlegend=False, xaxis=dict(title="Local Year", rangeslider=dict(visible=True))); ev_year = st.plotly_chart(fig_y, use_container_width=True, on_select="rerun", key=f"y_chart_{st.session_state.year_map_key}")
-            if ev_year and "selection" in ev_year and ev_year["selection"]["points"]:
-                st.session_state.selected_year = int(ev_year["selection"]["points"][0]["x"]); st.rerun()
+            if ev_year and "selection" in ev_year and ev_year["selection"]["points"]: st.session_state.selected_year = int(ev_year["selection"]["points"][0]["x"]); st.rerun()
         if st.session_state.selected_year is not None:
             with col_f:
                 yr = st.session_state.selected_year; st.markdown(f"### {yr} SEASON INTEL")
-                if st.button("❌ CLEAR YEAR", use_container_width=True):
-                    st.session_state.selected_year = None; st.session_state.year_map_key += 1; st.rerun()
+                if st.button("❌ CLEAR YEAR", use_container_width=True): st.session_state.selected_year = None; st.session_state.year_map_key += 1; st.rerun()
                 s_y = filt_df[filt_df[y_col].astype(int) == int(yr)]; st.markdown(f'<div class="stat-header">SEASON VOLUME</div><div class="stat-val">{len(s_y):,} LOGS</div>', unsafe_allow_html=True)
                 if not s_y.empty:
-                    st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
-                    m_y, y_yr = s_y[m_name_col].value_counts(), s_y[y_col].value_counts()
+                    st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True); m_y, y_yr = s_y[m_name_col].value_counts(), s_y[y_col].value_counts()
                     st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Month</div><div class="stat-val" style="margin-top:0px;">{str(m_y.idxmax()).upper()} ({m_y.max()})</div></div>', unsafe_allow_html=True)
                     st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True); f_y = s_y.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{f_y[d_col]:,.0f} MILES</div><div class="stat-label">{f_y["Station"]} by {f_y["DXer"]}</div>', unsafe_allow_html=True)
