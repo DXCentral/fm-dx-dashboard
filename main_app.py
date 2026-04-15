@@ -361,12 +361,14 @@ elif selected_page == "TEMPORAL TRENDS":
 
         # 3. INTERNATIONAL SEASONAL FLOW (FLYOUT ARCHITECTURE)
         st.markdown("#### 🌎 INTERNATIONAL SEASONAL FLOW")
-        st.caption("👈 Click on any country or month segment for tactical intelligence.")
+        st.caption("👈 Click on any country name or month segment for tactical intelligence.")
         intl_raw = filt_df[~filt_df['Country'].isin(['USA', 'Canada'])].copy()
         if not intl_raw.empty:
             intl_raw['Country'] = intl_raw['Country'].astype(str)
             intl_raw[m_name_col] = intl_raw[m_name_col].astype(str)
             intl_flow = intl_raw.groupby(['Country', m_name_col]).size().reset_index(name='Logs')
+            # ALPHABETICAL ORDER FIX: Sorting descending so Plotly renders A-to-Z from top to bottom
+            intl_flow = intl_flow.sort_values('Country', ascending=False)
             
             col_intl_m, col_intl_f = st.columns([3, 1]) if st.session_state.selected_intl_country else st.columns([1, 0.001])
             
@@ -376,7 +378,7 @@ elif selected_page == "TEMPORAL TRENDS":
                     template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00']
                 )
                 fig_intl.update_layout(
-                    barnorm='percent', height=500, barmode='stack', yaxis={'categoryorder':'total ascending'},
+                    barnorm='percent', height=500, barmode='stack', 
                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="% Monthly Distribution"
                 )
                 ev_intl = st.plotly_chart(fig_intl, use_container_width=True, on_select="rerun", key=f"intl_bar_{st.session_state.intl_map_key}")
@@ -414,7 +416,7 @@ elif selected_page == "TEMPORAL TRENDS":
                         hide_index=True, use_container_width=True
                     )
                     
-                    st.markdown(f'<div class="stat-header">TOP 5 PATHS (DXER ➔ {c_sel.upper()})</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-header">TOP 5 HUBS HEARING {c_sel.upper()}</div>', unsafe_allow_html=True)
                     intl_paths = c_df.groupby([dx_st_col]).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                     intl_paths['M'] = intl_paths['L']
                     st.dataframe(
