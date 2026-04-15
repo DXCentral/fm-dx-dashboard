@@ -89,12 +89,13 @@ def load_data():
         y_col = next((c for c in df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
         dom_col = next((c for c in df.columns if 'Local' in c and 'Day' in c and 'Month' in c), 'Local_Day_of_Month')
         m_name_col = next((c for c in df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name')
+        dx_st_col = next((c for c in df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
         
-        return df, df['Date_Obj'].max(), dist_col, dd_col, dx_lat, dx_lon, st_lat, st_lon, l_dx, h_col, y_col, dom_col, m_name_col
+        return df, df['Date_Obj'].max(), dist_col, dd_col, dx_lat, dx_lon, st_lat, st_lon, l_dx, h_col, y_col, dom_col, m_name_col, dx_st_col
     except Exception as e:
-        st.error(f"Link Failure: {e}"); return pd.DataFrame(), None, "Distance", "Distribution", None, None, None, None, "DX", "Hour", "Year", "Day", "Month"
+        st.error(f"Link Failure: {e}"); return pd.DataFrame(), None, "Distance", "Distribution", None, None, None, None, "DX", "Hour", "Year", "Day", "Month", "DXer_State"
 
-df, last_date, d_col, dd_col, dx_lat, dx_lon, st_lat, st_lon, dx_loc_col, h_col, y_col, dom_col, m_name_col = load_data()
+df, last_date, d_col, dd_col, dx_lat, dx_lon, st_lat, st_lon, dx_loc_col, h_col, y_col, dom_col, m_name_col, dx_st_col = load_data()
 if df.empty: st.stop()
 
 # 3. SIDEBAR NAVIGATION
@@ -183,7 +184,6 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
     st.markdown("---")
     geo_df = filt_df.copy(); geo_df = geo_df[geo_df['State'] != 'AM']
-    dx_st_col = next((c for c in geo_df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
     mo_col, yr_col = next((c for c in geo_df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name'), next((c for c in geo_df.columns if 'Local' in c and 'Year' in c), 'Local_Year')
     gs = [[0, '#640000'], [0.25, '#D32F2F'], [0.5, '#FF4500'], [0.75, '#FFA500'], [1, '#FFFF00']]
 
@@ -283,9 +283,9 @@ elif selected_page == "TEMPORAL TRENDS":
                 s_h = filt_df[filt_df[h_col].astype(int) == int(h)]
                 st.markdown('<div class="stat-header">HOUR MISSION SUMMARY</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{len(s_h):,} LOGS</div><div class="stat-label">{(len(s_h)/len(filt_df))*100:.1f}% of Global Volume</div>', unsafe_allow_html=True)
                 if not s_h.empty:
-                    st.markdown('<div class="stat-header">PEAK HOUR SYNC</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{str(s_h[m_name_col].mode().iloc[0]).upper()}</div><div class="stat-label">Most Active Month</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_h[y_col].mode().iloc[0]}</div><div class="stat-label">Most Active Year</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-header">PEAK HOUR SYNC</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{str(s_h[m_name_col].mode().iloc[0]).upper()}</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_h[y_col].mode().iloc[0]}</div>', unsafe_allow_html=True)
                     st.markdown('<div class="stat-header">LOCATION DOMINANCE</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_h[dx_loc_col].mode().iloc[0]}</div><div class="stat-label">Most Active DXer Hub</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_h["State"].mode().iloc[0]}</div><div class="stat-label">Most Active Station State</div>', unsafe_allow_html=True)
-                    st.markdown('<div class="stat-header">TOP PATHS (ORIGIN ➔ DEST)</div>', unsafe_allow_html=True); paths = s_h.groupby([dx_st_col, 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5); paths['Path'] = paths[dx_st_col] + " ➔ " + paths['State']; st.dataframe(paths[['Path', 'L']], column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
+                    st.markdown('<div class="stat-header">TOP PATHS (ORIGIN ➔ DEST)</div>', unsafe_allow_html=True); paths = s_h.groupby([dx_st_col, 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5); paths['Path'] = paths[dx_st_col].astype(str) + " ➔ " + paths['State'].astype(str); st.dataframe(paths[['Path', 'L']], column_config={"L": st.column_config.ProgressColumn("", format="%d")}, hide_index=True)
                     st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True); f = s_h.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div><div class="stat-label">{f["Station"]} caught at {f["Local_Time"]}</div>', unsafe_allow_html=True)
 
     elif tv == "Monthly Almanac":
@@ -330,8 +330,7 @@ elif selected_page == "TEMPORAL TRENDS":
                                 if val > 0:
                                     rel = val / max_v
                                     bg = '#FFFF00' if rel > 0.8 else ('#FFA500' if rel > 0.5 else ('#D32F2F' if rel > 0.2 else '#640000'))
-                                    fg = 'black' if rel > 0.8 else 'white'
-                                    styles.at[r_idx, c] = f'background-color: {bg}; color: {fg};'
+                                    styles.at[r_idx, c] = f'background-color: {bg}; color: {"black" if rel > 0.8 else "white"};'
                             else: styles.at[r_idx, c] = 'background-color: #000000; color: #FFFFFF; font-weight: bold;'
                     return styles
                 st.dataframe(final_pivot.style.apply(style_almanac, axis=None), use_container_width=True, height=1000, hide_index=True)
@@ -342,11 +341,25 @@ elif selected_page == "TEMPORAL TRENDS":
                     s_day = avail_m_df[avail_m_df['Date_Obj'] == sel_date]
                     if not s_day.empty:
                         st.metric("Total Logs", f"{len(s_day):,}"); st.metric("MUF Recorded", f"{s_day['Frequency'].max()} MHz"); st.metric("Unique DXers", s_day['DXer'].nunique())
-                        st.markdown('<div class="stat-header">ACTIVITY SYNC</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">FIRST: {s_day["Local_Time"].min()}</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">LAST: {s_day["Local_Time"].max()}</div>', unsafe_allow_html=True)
-                        st.markdown('<div class="stat-header">TOP PATHS</div>', unsafe_allow_html=True); paths = s_day.groupby([dx_st_col, 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5); paths['P'] = paths[dx_st_col] + " ➔ " + paths['State']; st.dataframe(paths[['P', 'L']], hide_index=True)
-                        st.markdown('<div class="stat-header">FURTHEST</div>', unsafe_allow_html=True); f = s_day.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-label">{f["Station"]} ({f["Frequency"]} MHz) caught at {f["Local_Time"]} by {f["DXer"]}</div>', unsafe_allow_html=True)
+                        
+                        st.markdown('<div class="stat-header">LOCATION DOMINANCE</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-val">{s_day[dx_loc_col].mode().iloc[0]}</div><div class="stat-label">Most Active DXer Hub</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-val">{s_day["State"].mode().iloc[0]}</div><div class="stat-label">Most Active Station State</div>', unsafe_allow_html=True)
+
+                        st.markdown('<div class="stat-header">TOP PATHS (STATE ➔ STATE)</div>', unsafe_allow_html=True)
+                        m_paths = s_day.groupby([dx_st_col, 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                        m_paths['Path'] = m_paths[dx_st_col].astype(str) + " ➔ " + m_paths['State'].astype(str)
+                        st.dataframe(m_paths[['Path', 'L']], hide_index=True)
+
+                        st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
+                        f = s_day.sort_values(d_col, ascending=False).iloc[0]
+                        st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-label">{f["Station"]} ({f["Frequency"]} MHz) by {f["DXer"]}</div>', unsafe_allow_html=True)
+                        
                         intl = s_day[~s_day['Country'].isin(['USA', 'Canada'])]
-                        if not intl.empty: st.markdown('<div class="stat-header">TOP COUNTRIES</div>', unsafe_allow_html=True); st.dataframe(intl.groupby('Country').size().sort_values(ascending=False).head(3), hide_index=True)
+                        if not intl.empty:
+                            st.markdown('<div class="stat-header">TOP INTERNATIONAL COUNTRIES</div>', unsafe_allow_html=True)
+                            st.dataframe(intl.groupby('Country').size().reset_index(name='L').sort_values('L', ascending=False).head(3), hide_index=True)
                     else: st.warning("No signal intelligence for selected date.")
 
     elif tv == "Yearly Trends":
