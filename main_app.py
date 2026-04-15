@@ -36,7 +36,12 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;700&display=swap');
     html, body, [class*="st-"] { font-family: 'Oswald', sans-serif !important; background-color: #000000; color: #FFFFFF; font-weight: 300; }
-    [data-testid="stDeckGlJsonChart"] { height: 1800px !important; }
+    
+    /* MAP CONTAINER HEIGHT REFINEMENT (v199.0) */
+    [data-testid="stDeckGlJsonChart"] {
+        height: 1500px !important;
+    }
+    
     div.stButton > button {
         background-color: #000000 !important; color: #FFFFFF !important;
         border: 1px solid #444444 !important; border-radius: 25px !important;
@@ -117,11 +122,11 @@ def load_data():
         dom_col = next((c for c in df.columns if 'Local' in c and 'Day' in c and 'Month' in c), 'Local_Day_of_Month')
         m_name_col = next((c for c in df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name')
         dx_st_col = next((c for c in df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
-        rds_c = next((c for c in df.columns if 'RDS' in c and 'Decode' in c), 'RDS_Decode')
+        rds_c_field = next((c for c in df.columns if 'RDS' in c and 'Decode' in c), 'RDS_Decode')
         
         df['Station_Discovery_Year'] = df.groupby('Station')[y_col].transform('min')
 
-        return df, df['Date_Obj'].max(), dist_col, dd_col, 'DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', l_dx, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c
+        return df, df['Date_Obj'].max(), dist_col, dd_col, 'DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', l_dx, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c_field
     except Exception as e:
         st.error(f"Link Failure: {e}"); return pd.DataFrame(), None, "Distance", "Distribution", None, None, None, None, "DX", "Hour", "Year", "Day", "Month", "DXer_State", "RDS"
 
@@ -137,9 +142,8 @@ with st.sidebar:
         icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin"], 
         default_index=1)
 
-# 4. GLOBAL FILTERS (FIXED FOR FULL SCREEN ERROR)
+# 4. GLOBAL FILTERS
 f_freq, f_dxer, f_stat, f_state, f_ctry, f_dxco, f_dxst, f_month, f_year, f_day, f_dist, f_reg, f_rds = ["All"] * 13
-
 if not st.session_state.full_screen:
     rk = f"v{st.session_state.reset_count}" 
     with st.expander(label="GLOBAL FILTERS", expanded=True):
@@ -164,7 +168,7 @@ f_logic = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state,
 for col, val in f_logic.items():
     if val != "All" and col in filt_df.columns: filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULE 2: ES-CLOUD TRACKER (CHRONOLOGICAL UPGRADE)
+# 5. MODULE 2: ES-CLOUD TRACKER
 if selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -186,8 +190,6 @@ if selected_page == "ES-CLOUD TRACKER":
         if st.button("📺 VIEW FULL SCREEN" if not st.session_state.full_screen else "❌ EXIT"): st.session_state.full_screen = not st.session_state.full_screen; st.rerun()
 
     if not map_df.empty:
-        # CHRONOLOGICAL TIMELINE ENGINE
-        # Sorts by Date AND Time so multi-day playback flows correctly
         timeline = map_df.sort_values('DateTime_Key')
         time_steps = timeline[['Date_Str', 'Time_Str']].drop_duplicates().values.tolist()
         
@@ -199,27 +201,22 @@ if selected_page == "ES-CLOUD TRACKER":
             cur_step = time_steps[st.session_state.p_idx]
             cur_date, cur_time = cur_step[0], cur_step[1]
         else:
-            # Revert to standard time slider if not playing
             times_only = sorted(map_df['Time_Str'].unique())
             cur_time = hc2.select_slider("Time Control", options=["SHOW ALL"] + times_only, value="SHOW ALL")
             cur_date = "N/A"
 
-        # LIVE MISSION HUD
         if cur_time == "SHOW ALL":
             pb_txt.write("## 🕒 VIEWING: ALL SELECTED DATA")
         else:
             display_date = f"{cur_date} | " if cur_date != "N/A" else ""
             pb_txt.write(f"## 🕒 {display_date}{cur_time}")
 
-        # Data subsetting for rendering
         if cur_time == "SHOW ALL":
             render_df = map_df
         else:
             if st.session_state.playing:
-                # Precise point-in-time for playback
                 render_df = map_df[(map_df['Date_Str'] == cur_date) & (map_df['Time_Str'] == cur_time)]
             else:
-                # Rolling 60-min window for manual slider
                 render_df = map_df[(map_df['Time_Str'] <= cur_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(cur_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))]
         
         layers = [pdk.Layer('HeatmapLayer' if vm == "Es Cloud Location Heatmap" else 'LineLayer', 
@@ -241,7 +238,7 @@ if selected_page == "ES-CLOUD TRACKER":
             else:
                 st.session_state.playing = False; st.rerun()
 
-# REMAINDER OF PAGES (RETAINING V197.0 LOGIC)
+# REMAINDER OF TACTICAL PAGES (LOCKED V197.0 LOGIC)
 elif selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
@@ -463,7 +460,7 @@ elif selected_page == "TEMPORAL TRENDS":
                     st.markdown('<div class="stat-header">TOP 5 CATCH PATHS (STATE ➔ STATE)</div>', unsafe_allow_html=True); s_paths = s_y.groupby([dx_st_col, 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5); s_paths['Path'] = s_paths[dx_st_col].astype(str) + " ➔ " + s_paths['State'].astype(str); st.dataframe(s_paths[['Path', 'L']], hide_index=True)
                     st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True); st.dataframe(s_y.groupby('Station').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
                     st.markdown('<div class="stat-header">TOP 5 MISSION DAYS</div>', unsafe_allow_html=True); st.dataframe(s_y.groupby('Date_Str').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
-                    f_y = s_y.sort_values(d_col, ascending=False).iloc[0]; st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{f_y[d_col]:,.0f} MILES</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]}, {f["City"]}, {f["State"]} by {f["DXer"]} ({f[dx_loc_col]}) on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
+                    f_y = s_y.sort_values(d_col, ascending=False).iloc[0]; st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{f_y[d_col]:,.0f} MILES</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-label">{f_y["Frequency"]} - {f_y["Station"]}, {f_y["City"]}, {f_y["State"]} by {f_y["DXer"]} ({f_y[dx_loc_col]}) on {f_y["Date_Str"]} at {f_y["Local_Time"]}</div>', unsafe_allow_html=True)
         
         st.markdown("---"); st.markdown("### 📊 LONG-TERM SEASONAL PERFORMANCE AUDITS")
         r1, r2 = st.columns(2)
@@ -496,7 +493,7 @@ elif selected_page == "TEMPORAL TRENDS":
         fig_str.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Avg Logs / Opening Day", xaxis_title="Season")
         st.plotly_chart(fig_str, use_container_width=True)
 
-# PHASE 2 PLACEHOLDERS
-elif selected_page == "FREQUENCY & MUF": st.header("Frequency & MUF Analysis Dashboard"); st.info("Under construction.")
-elif selected_page == "DXER INTELLIGENCE": st.header("DXer Network Intelligence Hub"); st.info("Under construction.")
-elif selected_page == "STATION & RDS IQ": st.header("Station & RDS Intelligence Hub"); st.info("Under construction.")
+# 9. PLACEHOLDERS FOR PHASE 2
+elif selected_page == "FREQUENCY & MUF": st.header("Frequency & MUF Analysis Dashboard"); st.info("Module under construction.")
+elif selected_page == "DXER INTELLIGENCE": st.header("DXer Network Intelligence Hub"); st.info("Module under construction.")
+elif selected_page == "STATION & RDS IQ": st.header("Station & RDS Intelligence Hub"); st.info("Module under construction.")
