@@ -135,8 +135,8 @@ from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     selected_page = option_menu("DATA MODULES", 
-        ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "STATION & RDS IQ"], 
-        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin"], 
+        ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ"], 
+        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin"], 
         default_index=0)
 
 # 4. GLOBAL FILTERS
@@ -167,7 +167,7 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state, '
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULE 1: DASHBOARD OVERVIEW
+# 5. MODULES
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
@@ -179,7 +179,6 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -223,7 +222,6 @@ elif selected_page == "ES-CLOUD TRACKER":
             if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
-# [REMAINDER OF TACTICAL PAGE LOGIC FROM V190.0]
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
@@ -405,20 +403,43 @@ elif selected_page == "TEMPORAL TRENDS":
                     dist_row = c_df.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{dist_row[d_col]:,.0f} MILES</div><div class="stat-label">MAX DISTANCE: {dist_row["Frequency"]} MHz - {dist_row["Station"]} caught by {dist_row["DXer"]} ({dist_row[dx_loc_col]}) on {dist_row["Date_Str"]} at {dist_row["Local_Time"]}</div>', unsafe_allow_html=True)
 
     elif tv == "Yearly Trends":
-        st.markdown("### SEASONAL VOLUME TRENDS"); y_data = filt_df.groupby(y_col).size().reset_index(name='Logs').sort_values(y_col)
-        fig_y = go.Figure(); fig_y.add_trace(go.Bar(x=y_data[y_col], y=y_data['Logs'], marker_color='#D32F2F', opacity=0.3))
-        fig_y.add_trace(go.Scatter(x=y_data[y_col], y=y_data['Logs'], mode='markers+lines', marker=dict(size=12, color='#D32F2F', line=dict(width=2, color='white'))))
-        fig_y.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=600, showlegend=False, xaxis=dict(title="Local Year", rangeslider=dict(visible=True)))
-        ev_year = st.plotly_chart(fig_y, use_container_width=True, on_select="rerun", key=f"y_chart_{st.session_state.year_map_key}")
-        if ev_year and "selection" in ev_year and ev_year["selection"]["points"]: st.session_state.selected_year = int(ev_year["selection"]["points"][0]["x"]); st.rerun()
+        col_m, col_f = st.columns([3, 1]) if st.session_state.selected_year is not None else st.columns([1, 0.001])
+        with col_m:
+            st.markdown("### SEASONAL VOLUME TIMELINE"); st.caption("👈 CLICK ANY BAR TO VIEW SEASON QUALITY & EFFICIENCY METRICS")
+            y_data = filt_df.groupby(y_col).size().reset_index(name='Logs').sort_values(y_col)
+            fig_y = go.Figure()
+            fig_y.add_trace(go.Bar(x=y_data[y_col], y=y_data['Logs'], name='Log Volume', marker_color='#D32F2F', opacity=0.3, hoverinfo='x+y'))
+            fig_y.add_trace(go.Scatter(x=y_data[y_col], y=y_data['Logs'], mode='markers+lines', name='Year Mark', marker=dict(size=12, color='#D32F2F', line=dict(width=2, color='white')), line=dict(width=1, color='#444')))
+            fig_y.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=600, showlegend=False, xaxis=dict(title="Local Year", rangeslider=dict(visible=True)), yaxis=dict(title="Total Log Volume", showgrid=False))
+            ev_year = st.plotly_chart(fig_y, use_container_width=True, on_select="rerun", key=f"y_chart_{st.session_state.year_map_key}")
+            if ev_year and "selection" in ev_year and ev_year["selection"]["points"]:
+                st.session_state.selected_year = int(ev_year["selection"]["points"][0]["x"]); st.rerun()
+        
         if st.session_state.selected_year is not None:
-            yr = st.session_state.selected_year; st.markdown(f"### {yr} SEASON INTEL")
-            if st.button("❌ CLEAR YEAR", use_container_width=True): st.session_state.selected_year = None; st.session_state.year_map_key += 1; st.rerun()
-            s_y = filt_df[filt_df[y_col].astype(int) == int(yr)]; st.markdown(f'<div class="stat-header">SEASON VOLUME</div><div class="stat-val">{len(s_y):,} LOGS</div>', unsafe_allow_html=True)
-            if not s_y.empty:
-                m_y = s_y[m_name_col].value_counts()
-                st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Month</div><div class="stat-val" style="margin-top:0px;">{str(m_y.idxmax()).upper()} ({m_y.max()})</div></div>', unsafe_allow_html=True)
-                f_y = s_y.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{f_y[d_col]:,.0f} MILES</div><div class="stat-label">{f_y["Station"]} by {f_y["DXer"]}</div>', unsafe_allow_html=True)
+            with col_f:
+                yr = st.session_state.selected_year; st.markdown(f"### {yr} SEASON INTEL")
+                if st.button("❌ CLEAR SELECTION", key="cl_yr", use_container_width=True): st.session_state.selected_year = None; st.session_state.year_map_key += 1; st.rerun()
+                s_y = filt_df[filt_df[y_col].astype(int) == int(yr)]
+                st.markdown('<div class="stat-header">SEASON MISSION SUMMARY</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-val">{len(s_y):,} LOGS</div><div class="stat-label">Total Signal Intelligence Recorded</div>', unsafe_allow_html=True)
+                
+                # SCIENTIFIC NORMALIZATION: Season Efficiency
+                u_dx = s_y['DXer'].nunique()
+                eff = len(s_y) / u_dx if u_dx > 0 else 0
+                st.markdown('<div class="stat-header">SEASON EFFICIENCY INDEX</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-val">{eff:.1f}</div><div class="stat-label">Logs per Active DXer (The "True Quality" Metric)</div>', unsafe_allow_html=True)
+                
+                if not s_y.empty:
+                    m_y = s_y[m_name_col].value_counts()
+                    st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Month</div><div class="stat-val" style="margin-top:0px;">{str(m_y.idxmax()).upper()} ({m_y.max()})</div></div>', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-header">SOLAR CYCLE CORRELATION</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">PENDING</div><div class="stat-label">Solar Data Integration v2.0</div>', unsafe_allow_html=True)
+                    f_y = s_y.sort_values(d_col, ascending=False).iloc[0]
+                    st.markdown('<div class="stat-header">SEASON MILESTONE</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{f_y[d_col]:,.0f} MILES</div><div class="stat-label">{f_y["Station"]} by {f_y["DXer"]} on {f_y["Date_Str"]}</div>', unsafe_allow_html=True)
 
-elif selected_page == "FREQUENCY & MUF": st.header("Frequency & MUF Analysis Dashboard"); st.info("Module under construction for Phase 2 Deployment.")
-elif selected_page == "STATION & RDS IQ": st.header("Station & RDS Intelligence Hub"); st.info("Module under construction for Phase 2 Deployment.")
+# 9. PLACEHOLDERS FOR PHASE 2
+elif selected_page == "FREQUENCY & MUF": st.header("Frequency & MUF Analysis Dashboard"); st.info("Module under construction: SDR Radio Dial & MUF Heatmap integration.")
+elif selected_page == "DXER INTELLIGENCE": st.header("DXer Network Intelligence"); st.info("Module under construction: Receiver Location Heatmaps & Network Efficiency.")
+elif selected_page == "STATION & RDS IQ": st.header("Station & RDS Intelligence Hub"); st.info("Module under construction: WTFDA Station Density & RDS Capture forensics.")
