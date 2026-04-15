@@ -36,6 +36,12 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;700&display=swap');
     html, body, [class*="st-"] { font-family: 'Oswald', sans-serif !important; background-color: #000000; color: #FFFFFF; font-weight: 300; }
+    
+    /* MAP CONTAINER HEIGHT FIX (v192.0) */
+    [data-testid="stDeckGlJsonChart"] {
+        height: 1800px !important;
+    }
+    
     div.stButton > button {
         background-color: #000000 !important; color: #FFFFFF !important;
         border: 1px solid #444444 !important; border-radius: 25px !important;
@@ -161,7 +167,7 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state, '
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULES
+# 5. MODULE 1: DASHBOARD OVERVIEW
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
@@ -173,6 +179,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
+# 6. MODULE 2: ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -209,14 +216,14 @@ elif selected_page == "ES-CLOUD TRACKER":
                             color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]] if vm == "Es Cloud Location Heatmap" else None, 
                             get_width=1, get_color=[211, 47, 47, 45])]
                             
-        # HEIGHT STRETCH: Set to 1800 for cinematic vertical scope
-        st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers, height=1800))
+        st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers))
         st.markdown("""<div class="watermark"><img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="width: 250px;"></div>""", unsafe_allow_html=True)
         if st.session_state.playing:
             conf = speed_sets[play_speed]
             if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
+# [REMAINDER OF TACTICAL PAGE LOGIC FROM V190.0]
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
