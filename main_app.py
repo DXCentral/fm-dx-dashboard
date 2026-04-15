@@ -321,12 +321,10 @@ elif selected_page == "TEMPORAL TRENDS":
                             if isinstance(label, int) and 1 <= label <= 31 and c in core_y:
                                 if val > 0:
                                     rel = val / max_v; bg = '#FFFF00' if rel > 0.8 else ('#FFA500' if rel > 0.5 else ('#D32F2F' if rel > 0.2 else '#640000'))
-                                    # FONT COLOR TWEAK: Black for Yellow/Orange cells, White for Red/Black
                                     fg = 'black' if rel > 0.5 else 'white'
                                     styles.at[r_idx, c] = f'background-color: {bg}; color: {fg};'
                             else: styles.at[r_idx, c] = 'background-color: #000000; color: #FFFFFF; font-weight: bold;'
                     return styles
-                # FULL HEIGHT TWEAK
                 st.dataframe(final_pivot.style.apply(style_almanac, axis=None), use_container_width=True, height=1250, hide_index=True)
             if sel_date:
                 with ci:
@@ -360,46 +358,49 @@ elif selected_page == "TEMPORAL TRENDS":
             fig_dens.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
             st.plotly_chart(fig_dens, use_container_width=True)
 
-        # 3. INTERNATIONAL SEASONAL FLOW
+        # 3. INTERNATIONAL SEASONAL FLOW (FLYOUT ARCHITECTURE)
         st.markdown("#### 🌎 INTERNATIONAL SEASONAL FLOW")
+        st.caption("👈 Click on any country or month segment for tactical intelligence.")
         intl_raw = filt_df[~filt_df['Country'].isin(['USA', 'Canada'])].copy()
         if not intl_raw.empty:
             intl_raw['Country'] = intl_raw['Country'].astype(str)
             intl_raw[m_name_col] = intl_raw[m_name_col].astype(str)
             intl_flow = intl_raw.groupby(['Country', m_name_col]).size().reset_index(name='Logs')
-            intl_flow['Logs'] = intl_flow['Logs'].astype(float)
             
-            fig_intl = px.bar(
-                intl_flow, x='Logs', y='Country', color=m_name_col, orientation='h',
-                template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00']
-            )
-            # NORMALIZATION FIX: Move barnorm inside update_layout
-            fig_intl.update_layout(
-                barnorm='percent', height=500, barmode='stack', yaxis={'categoryorder':'total ascending'},
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="% Monthly Distribution"
-            )
-            ev_intl = st.plotly_chart(fig_intl, use_container_width=True, on_select="rerun", key="intl_flow_chart")
+            # 75/25 Flyout Split
+            intl_col1, intl_col2 = st.columns([3, 1]) if st.session_state.selected_intl_country else st.columns([1, 0.001])
             
-            if ev_intl and ev_intl.get("selection") and ev_intl["selection"].get("points"):
-                st.session_state.selected_intl_country = ev_intl["selection"]["points"][0]["y"]
+            with intl_col1:
+                fig_intl = px.bar(
+                    intl_flow, x='Logs', y='Country', color=m_name_col, orientation='h',
+                    template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00']
+                )
+                fig_intl.update_layout(
+                    barnorm='percent', height=500, barmode='stack', yaxis={'categoryorder':'total ascending'},
+                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="% Monthly Distribution"
+                )
+                ev_intl = st.plotly_chart(fig_intl, use_container_width=True, on_select="rerun", key="intl_flow_chart")
+                
+                if ev_intl and ev_intl.get("selection") and ev_intl["selection"].get("points"):
+                    st.session_state.selected_intl_country = ev_intl["selection"]["points"][0]["y"]
+                    st.rerun()
             
             if st.session_state.selected_intl_country:
-                c_sel = st.session_state.selected_intl_country
-                st.markdown(f"### 📡 {c_sel.upper()} MONTHLY INTEL")
-                if st.button(f"❌ CLEAR {c_sel.upper()}"):
-                    st.session_state.selected_intl_country = None; st.rerun()
-                c_df = intl_raw[intl_raw['Country'] == c_sel]
-                c_rep = c_df.groupby(m_name_col).agg({
-                    'Frequency': 'max',
-                    'Station': 'count',
-                    d_col: 'max'
-                })
-                c_rep = c_rep.rename(columns={
-                    'Frequency': 'Peak MUF',
-                    'Station': 'Total Logs',
-                    d_col: 'Max Miles'
-                })
-                st.dataframe(c_rep, use_container_width=True)
+                with intl_col2:
+                    c_sel = st.session_state.selected_intl_country
+                    st.markdown(f"### 📡 {c_sel.upper()} INTEL")
+                    # FIXED CLEAR BUTTON
+                    if st.button(f"❌ CLEAR {c_sel.upper()}"):
+                        st.session_state.selected_intl_country = None
+                        st.rerun()
+                    
+                    c_df = intl_raw[intl_raw['Country'] == c_sel]
+                    c_rep = c_df.groupby(m_name_col).agg({
+                        'Frequency': 'max',
+                        'Station': 'count',
+                        d_col: 'max'
+                    }).rename(columns={'Frequency':'Peak MUF', 'Station':'Logs', d_col':'Max Mi'})
+                    st.dataframe(c_rep, use_container_width=True)
 
     elif tv == "Yearly Trends":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_year is not None else st.columns([1, 0.001])
