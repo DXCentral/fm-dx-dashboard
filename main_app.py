@@ -209,8 +209,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 ev_hub = st.plotly_chart(fig_hub, use_container_width=True, on_select="rerun", key=f"dist_hub_{st.session_state.dist_map_key}")
                 if ev_hub and "selection" in ev_hub and ev_hub["selection"]["points"]:
                     nt = ev_hub["selection"]["points"][0]["y"]
-                    if st.session_state.selected_tier != nt:
-                        st.session_state.selected_tier = nt; st.rerun()
+                    if st.session_state.selected_tier != nt: st.session_state.selected_tier = nt; st.rerun()
             pulse_data = geo_df.groupby(['Local_Month', dd_col]).size().reset_index(name='Logs'); fig_pulse = px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', color_discrete_sequence=['#D32F2F', '#FFA500', '#FFFFFF', '#888888'], template="plotly_dark"); st.plotly_chart(fig_pulse, use_container_width=True)
 
         if st.session_state.selected_tier:
@@ -312,10 +311,7 @@ elif selected_page == "TEMPORAL TRENDS":
                     footer.at['DAYS >= 100', col] = int((d_slice >= 100).sum()); footer.at['DAYS >= 500', col] = int((d_slice >= 500).sum())
                 final_pivot = pd.concat([pivot, footer]).reset_index().rename(columns={'index': 'DAY/METRIC'})
                 def style_almanac(df):
-                    styles = pd.DataFrame('', index=df.index, columns=df.columns)
-                    core_y = [c for c in df.columns if str(c).isdigit()]
-                    core_matrix = df.iloc[:31].get(core_y, pd.DataFrame())
-                    max_v = core_matrix.max().max() if not core_matrix.empty else 100
+                    styles = pd.DataFrame('', index=df.index, columns=df.columns); core_y = [c for c in df.columns if str(c).isdigit()]; core_matrix = df.iloc[:31].get(core_y, pd.DataFrame()); max_v = core_matrix.max().max() if not core_matrix.empty else 100
                     for r_idx in df.index:
                         label = df.at[r_idx, 'DAY/METRIC']
                         for c in df.columns:
@@ -372,7 +368,10 @@ elif selected_page == "TEMPORAL TRENDS":
                 if st.button(f"❌ CLEAR {c_sel.upper()}"):
                     st.session_state.selected_intl_country = None; st.rerun()
                 c_df = intl_data[intl_data['Country'] == c_sel]
-                c_rep = c_df.groupby(m_name_col).agg({'Frequency': 'max', 'Station': 'count', d_col: 'max'}).rename(columns={'Frequency':'Peak MUF', 'Station':'Total Logs', d_col':'Max Miles'})
+                # Break down long lines to prevent SyntaxErrors
+                c_grp = c_df.groupby(m_name_col)
+                c_rep = c_grp.agg({'Frequency': 'max', 'Station': 'count', d_col: 'max'})
+                c_rep = c_rep.rename(columns={'Frequency':'Peak MUF', 'Station':'Total Logs', d_col':'Max Miles'})
                 st.dataframe(c_rep, use_container_width=True)
 
     elif tv == "Yearly Trends":
