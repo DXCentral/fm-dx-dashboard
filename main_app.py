@@ -143,7 +143,7 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state, '
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. DASHBOARD OVERVIEW
+# 5. MODULE 1: DASHBOARD OVERVIEW
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
@@ -155,7 +155,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. ES-CLOUD TRACKER
+# 6. MODULE 2: ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -190,7 +190,7 @@ elif selected_page == "ES-CLOUD TRACKER":
             if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
-# 7. GEOGRAPHIC ANALYSIS
+# 7. MODULE 3: GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
@@ -358,7 +358,7 @@ elif selected_page == "TEMPORAL TRENDS":
             fig_dens.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
             st.plotly_chart(fig_dens, use_container_width=True)
 
-        # 3. INTERNATIONAL SEASONAL FLOW (FLYOUT ARCHITECTURE)
+        # 3. INTERNATIONAL SEASONAL FLOW
         st.markdown("#### 🌎 INTERNATIONAL SEASONAL FLOW")
         st.caption("👈 Click on any country or month segment for tactical intelligence.")
         intl_raw = filt_df[~filt_df['Country'].isin(['USA', 'Canada'])].copy()
@@ -366,8 +366,8 @@ elif selected_page == "TEMPORAL TRENDS":
             intl_raw['Country'] = intl_raw['Country'].astype(str)
             intl_raw[m_name_col] = intl_raw[m_name_col].astype(str)
             intl_flow = intl_raw.groupby(['Country', m_name_col]).size().reset_index(name='Logs')
+            intl_flow['Logs'] = intl_flow['Logs'].astype(float)
             
-            # 75/25 Flyout Split
             intl_col1, intl_col2 = st.columns([3, 1]) if st.session_state.selected_intl_country else st.columns([1, 0.001])
             
             with intl_col1:
@@ -389,7 +389,6 @@ elif selected_page == "TEMPORAL TRENDS":
                 with intl_col2:
                     c_sel = st.session_state.selected_intl_country
                     st.markdown(f"### 📡 {c_sel.upper()} INTEL")
-                    # FIXED CLEAR BUTTON
                     if st.button(f"❌ CLEAR {c_sel.upper()}"):
                         st.session_state.selected_intl_country = None
                         st.rerun()
@@ -399,7 +398,11 @@ elif selected_page == "TEMPORAL TRENDS":
                         'Frequency': 'max',
                         'Station': 'count',
                         d_col: 'max'
-                    }).rename(columns={'Frequency':'Peak MUF', 'Station':'Logs', d_col':'Max Mi'})
+                    })
+                    # Renaming broken down into simple safe steps
+                    c_rep = c_rep.rename(columns={'Frequency': 'Peak MUF'})
+                    c_rep = c_rep.rename(columns={'Station': 'Logs'})
+                    c_rep = c_rep.rename(columns={d_col: 'Max Mi'})
                     st.dataframe(c_rep, use_container_width=True)
 
     elif tv == "Yearly Trends":
