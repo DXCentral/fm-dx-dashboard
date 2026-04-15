@@ -359,7 +359,7 @@ elif selected_page == "TEMPORAL TRENDS":
             fig_dens.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
             st.plotly_chart(fig_dens, use_container_width=True)
 
-        # 3. INTERNATIONAL SEASONAL FLOW (FLYOUT ARCHITECTURE)
+        # 3. INTERNATIONAL SEASONAL FLOW (ALPHABETICAL & CLICKABLE)
         st.markdown("#### 🌎 INTERNATIONAL SEASONAL FLOW")
         st.caption("👈 Click on any country name or month segment for tactical intelligence.")
         intl_raw = filt_df[~filt_df['Country'].isin(['USA', 'Canada'])].copy()
@@ -367,7 +367,6 @@ elif selected_page == "TEMPORAL TRENDS":
             intl_raw['Country'] = intl_raw['Country'].astype(str)
             intl_raw[m_name_col] = intl_raw[m_name_col].astype(str)
             intl_flow = intl_raw.groupby(['Country', m_name_col]).size().reset_index(name='Logs')
-            # ALPHABETICAL ORDER FIX: Sorting descending so Plotly renders A-to-Z from top to bottom
             intl_flow = intl_flow.sort_values('Country', ascending=False)
             
             col_intl_m, col_intl_f = st.columns([3, 1]) if st.session_state.selected_intl_country else st.columns([1, 0.001])
@@ -377,8 +376,9 @@ elif selected_page == "TEMPORAL TRENDS":
                     intl_flow, x='Logs', y='Country', color=m_name_col, orientation='h',
                     template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00']
                 )
+                # barnorm FIX + CLICKABLE AXIS LABELS
                 fig_intl.update_layout(
-                    barnorm='percent', height=500, barmode='stack', 
+                    barnorm='percent', height=500, barmode='stack', clickmode='event+select',
                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="% Monthly Distribution"
                 )
                 ev_intl = st.plotly_chart(fig_intl, use_container_width=True, on_select="rerun", key=f"intl_bar_{st.session_state.intl_map_key}")
