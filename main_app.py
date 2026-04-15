@@ -64,7 +64,7 @@ def get_avg_date(dates_series):
         return (datetime.datetime(2024, 1, 1) + datetime.timedelta(days=int(ds.dt.dayofyear.mean()) - 1)).strftime('%b %d')
     except: return "N/A"
 
-# 2. DATA LOADING (UPDATED FOR DUAL-SOURCE COORDINATES)
+# 2. DATA LOADING (REINFORCED FOR 2025 VISIBILITY)
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -83,33 +83,27 @@ def load_data():
         df_coords['join_dx'], df_coords['join_st'] = df_coords[c_dx].str.upper().str.strip(), df_coords[c_st].str.upper().str.strip()
         df_coords = df_coords.drop_duplicates(subset=['join_dx', 'join_st'])
         
-        # Merge Lookup Table
         df = df_logs.merge(df_coords, on=['join_dx', 'join_st'], how='left', suffixes=('', '_coord'))
         
-        # Identify individual Lat/Lon columns (if they exist in the sheet)
-        # We prefer coordinate values already in the main log table for 2025 visibility
-        sheet_mid_lat = next((c for c in df.columns if c == 'Mid_Lat'), None)
-        sheet_mid_lon = next((c for c in df.columns if c == 'Mid_Long'), None)
-        
-        dx_lat_col = next((c for c in df.columns if 'DXer_Latitude' in c or ('DX' in c and 'Lat' in c)), None)
-        dx_lon_col = next((c for c in df.columns if 'DXer_Longitude' in c or ('DX' in c and 'Lon' in c)), None)
-        st_lat_col = next((c for c in df.columns if 'Station_Lat' in c or ('ST' in c and 'Lat' in c)), None)
-        st_lon_col = next((c for c in df.columns if 'Station_Long' in c or ('ST' in c and 'Lon' in c)), None)
+        # COLUMN DETECTION
+        mid_lat_col = next((c for c in df.columns if c == 'Mid_Lat'), None)
+        mid_lon_col = next((c for c in df.columns if c == 'Mid_Long'), None)
+        dx_lat_source = next((c for c in df.columns if 'DXer_Latitude' in c or ('DX' in c and 'Lat' in c)), None)
+        dx_lon_source = next((c for c in df.columns if 'DXer_Longitude' in c or ('DX' in c and 'Lon' in c)), None)
+        st_lat_source = next((c for c in df.columns if 'Station_Lat' in c or ('ST' in c and 'Lat' in c)), None)
+        st_lon_source = next((c for c in df.columns if 'Station_Long' in c or ('ST' in c and 'Lon' in c)), None)
 
-        # Force numeric conversion for all coordinate columns found
-        target_cols = [c for c in [sheet_mid_lat, sheet_mid_lon, dx_lat_col, dx_lon_col, st_lat_col, st_lon_col] if c is not None]
-        for c in target_cols:
+        numeric_targets = [c for c in [mid_lat_col, mid_lon_col, dx_lat_source, dx_lon_source, st_lat_source, st_lon_source] if c is not None]
+        for c in numeric_targets:
             df[c] = pd.to_numeric(df[c].astype(str).str.replace('°', '').str.strip(), errors='coerce').astype('float32')
 
-        # DUAL-SOURCE MIDPOINT LOGIC: 
-        # If the sheet already has Mid_Lat/Mid_Long, use them. Otherwise, calculate from DX/ST Lats.
-        if sheet_mid_lat and sheet_mid_lon:
-            df['Final_Mid_Lat'] = df[sheet_mid_lat].fillna((df[dx_lat_col] + df[st_lat_col]) / 2)
-            df['Final_Mid_Lon'] = df[sheet_mid_lon].fillna((df[dx_lon_col] + df[st_lon_col]) / 2)
+        if mid_lat_col and mid_lon_col:
+            df['Final_Mid_Lat'] = df[mid_lat_col].fillna((df[dx_lat_source] + df[st_lat_source]) / 2)
+            df['Final_Mid_Lon'] = df[mid_lon_col].fillna((df[dx_lon_source] + df[st_lon_source]) / 2)
         else:
-            df['Final_Mid_Lat'] = (df[dx_lat_col] + df[st_lat_col]) / 2
-            df['Final_Mid_Lon'] = (df[dx_lon_col] + df[st_lon_col]) / 2
-            
+            df['Final_Mid_Lat'] = (df[dx_lat_source] + df[st_lat_source]) / 2
+            df['Final_Mid_Lon'] = (df[dx_lon_source] + df[st_lon_source]) / 2
+
         df['Date_Obj'], df['Time_Str'] = pd.to_datetime(df['Local_Date']).dt.date, pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
         df['Date_Str'] = pd.to_datetime(df['Local_Date']).dt.strftime('%m/%d/%Y')
         
@@ -121,7 +115,7 @@ def load_data():
         m_name_col = next((c for c in df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name')
         dx_st_col = next((c for c in df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
         
-        return df, df['Date_Obj'].max(), dist_col, dd_col, dx_lat_col, dx_lon_col, st_lat_col, st_lon_col, l_dx, h_col, y_col, dom_col, m_name_col, dx_st_col
+        return df, df['Date_Obj'].max(), dist_col, dd_col, dx_lat_source, dx_lon_source, st_lat_source, st_lon_source, l_dx, h_col, y_col, dom_col, m_name_col, dx_st_col
     except Exception as e:
         st.error(f"Link Failure: {e}"); return pd.DataFrame(), None, "Distance", "Distribution", None, None, None, None, "DX", "Hour", "Year", "Day", "Month", "DXer_State"
 
@@ -166,7 +160,7 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state, '
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULE 1: DASHBOARD OVERVIEW (LOCKED)
+# 5. MODULE 1: DASHBOARD OVERVIEW
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
@@ -178,7 +172,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER (LOCKED)
+# 6. MODULE 2: ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -206,8 +200,6 @@ elif selected_page == "ES-CLOUD TRACKER":
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
         render_df = map_df if current_time == "SHOW ALL" else map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(current_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))]
         
-        # HEATMAP: Pulls from the Final Mid_Lat columns (Dual Source)
-        # PATHLINES: Pulls from DXer/Station Lat columns (Lookup + Sheet fallback)
         layers = [pdk.Layer('HeatmapLayer' if vm == "Es Cloud Location Heatmap" else 'LineLayer', 
                             data=render_df[['Final_Mid_Lat', 'Final_Mid_Lon']].dropna() if vm == "Es Cloud Location Heatmap" else render_df[[dx_lat, dx_lon, st_lat, st_lon]].dropna(), 
                             get_position='[Final_Mid_Lon, Final_Mid_Lat]' if vm == "Es Cloud Location Heatmap" else None, 
@@ -224,7 +216,7 @@ elif selected_page == "ES-CLOUD TRACKER":
             if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
-# 7. MODULE 3: GEOGRAPHIC ANALYSIS (LOCKED)
+# 7. MODULE 3: GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
@@ -311,8 +303,7 @@ elif selected_page == "TEMPORAL TRENDS":
             ev_hour = st.plotly_chart(fig_h, use_container_width=True, on_select="rerun", key=f"h_chart_{st.session_state.hour_map_key}")
             if ev_hour and "selection" in ev_hour and ev_hour["selection"]["points"]:
                 new_h = int(ev_hour["selection"]["points"][0]["x"])
-                if st.session_state.selected_hour != new_h:
-                    st.session_state.selected_hour = new_h; st.rerun()
+                if st.session_state.selected_hour != new_h: st.session_state.selected_hour = new_h; st.rerun()
         if st.session_state.selected_hour is not None:
             with col_f:
                 h = st.session_state.selected_hour; st.markdown(f"### HOUR {h:02d}:00 INTEL")
@@ -355,8 +346,7 @@ elif selected_page == "TEMPORAL TRENDS":
                             if isinstance(label, int) and 1 <= label <= 31 and c in core_y:
                                 if val > 0:
                                     rel = val / max_v; bg = '#FFFF00' if rel > 0.8 else ('#FFA500' if rel > 0.5 else ('#D32F2F' if rel > 0.2 else '#640000'))
-                                    fg = 'black' if rel > 0.5 else 'white'
-                                    styles.at[r_idx, c] = f'background-color: {bg}; color: {fg};'
+                                    fg = 'black' if rel > 0.5 else 'white'; styles.at[r_idx, c] = f'background-color: {bg}; color: {fg};'
                             else: styles.at[r_idx, c] = 'background-color: #000000; color: #FFFFFF; font-weight: bold;'
                     return styles
                 st.dataframe(final_pivot.style.apply(style_almanac, axis=None), use_container_width=True, height=1250, hide_index=True)
@@ -384,12 +374,10 @@ elif selected_page == "TEMPORAL TRENDS":
             for m in m_days:
                 if m in density_pivot.index: density_pivot.loc[m] = (density_pivot.loc[m] / m_days[m]) * 100
             density_pivot.loc['SEASON TOTAL'] = (density_data.groupby(y_col)['Date_Obj'].nunique() / 123) * 100
-            density_pivot['AVERAGES'] = density_pivot.mean(axis=1)
-            density_pivot.columns = [str(c) for c in density_pivot.columns]
+            density_pivot['AVERAGES'] = density_pivot.mean(axis=1); density_pivot.columns = [str(c) for c in density_pivot.columns]
             dens_text = density_pivot.map(lambda x: f"{x:.1f}%")
             fig_dens = px.imshow(density_pivot, text_auto=False, color_continuous_scale='YlOrRd_r', labels=dict(color="% Density"), template="plotly_dark")
-            fig_dens.update_traces(text=dens_text.values, texttemplate="%{text}")
-            fig_dens.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
+            fig_dens.update_traces(text=dens_text.values, texttemplate="%{text}"); fig_dens.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
             st.plotly_chart(fig_dens, use_container_width=True)
 
         # 3. INTERNATIONAL SEASONAL FLOW
@@ -400,51 +388,32 @@ elif selected_page == "TEMPORAL TRENDS":
             intl_raw['Country'] = intl_raw['Country'].astype(str)
             intl_raw[m_name_col] = intl_raw[m_name_col].astype(str)
             intl_flow = intl_raw.groupby(['Country', m_name_col]).size().reset_index(name='Logs')
-            # ALPHABETICAL SORT: A at top, Z at bottom
             intl_flow = intl_flow.sort_values('Country', ascending=False)
-            
             col_intl_m, col_intl_f = st.columns([3, 1]) if st.session_state.selected_intl_country else st.columns([1, 0.001])
             with col_intl_m:
-                fig_intl = px.bar(
-                    intl_flow, x='Logs', y='Country', color=m_name_col, orientation='h',
-                    template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00']
-                )
-                fig_intl.update_layout(
-                    barnorm='percent', height=500, barmode='stack', clickmode='event+select',
-                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="% Monthly Distribution"
-                )
+                fig_intl = px.bar(intl_flow, x='Logs', y='Country', color=m_name_col, orientation='h', template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00'])
+                fig_intl.update_layout(barnorm='percent', height=500, barmode='stack', clickmode='event+select', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="% Monthly Distribution")
                 ev_intl = st.plotly_chart(fig_intl, use_container_width=True, on_select="rerun", key=f"intl_bar_{st.session_state.intl_map_key}")
                 if ev_intl and ev_intl.get("selection") and ev_intl["selection"].get("points"):
                     new_intl = ev_intl["selection"]["points"][0]["y"]
-                    if st.session_state.selected_intl_country != new_intl:
-                        st.session_state.selected_intl_country = new_intl
-                        st.rerun()
-
+                    if st.session_state.selected_intl_country != new_intl: st.session_state.selected_intl_country = new_intl; st.rerun()
             if st.session_state.selected_intl_country:
                 with col_intl_f:
-                    c_sel = st.session_state.selected_intl_country
-                    st.markdown(f"### 📡 {c_sel.upper()} INTEL")
-                    if st.button("❌ CLEAR COUNTRY", use_container_width=True):
-                        st.session_state.selected_intl_country = None
-                        st.session_state.intl_map_key += 1
-                        st.rerun()
-                    
+                    c_sel = st.session_state.selected_intl_country; st.markdown(f"### 📡 {c_sel.upper()} INTEL")
+                    if st.button("❌ CLEAR COUNTRY", use_container_width=True): st.session_state.selected_intl_country = None; st.session_state.intl_map_key += 1; st.rerun()
                     c_df = intl_raw[intl_raw['Country'] == c_sel]
                     st.markdown('<div class="stat-header">MONTHLY DISTRIBUTION</div>', unsafe_allow_html=True)
                     c_grp = c_df.groupby(m_name_col).size().reset_index(name='Logs')
                     c_grp['% of Total'] = (c_grp['Logs'] / len(c_df)) * 100
                     c_grp['M'] = c_grp['% of Total']
                     st.dataframe(c_grp, column_config={m_name_col: "Month", "Logs": "Total Logs", "% of Total": st.column_config.NumberColumn("%", format="%.1f%%"), "M": st.column_config.ProgressColumn("", format="", min_value=0, max_value=100)}, hide_index=True, use_container_width=True)
-                    
                     st.markdown(f'<div class="stat-header">TOP 5 HUBS HEARING {c_sel.upper()}</div>', unsafe_allow_html=True)
                     intl_paths = c_df.groupby([dx_st_col]).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                     intl_paths['M'] = intl_paths['L']
                     st.dataframe(intl_paths, column_config={dx_st_col: "Origin State/Prov", "L": "Logs", "M": st.column_config.ProgressColumn("", format="", min_value=0, max_value=int(intl_paths['L'].max() if not intl_paths.empty else 10))}, hide_index=True, use_container_width=True)
-                    
                     st.markdown('<div class="stat-header">PEAK SIGNAL INTEL</div>', unsafe_allow_html=True)
                     muf_row = c_df.sort_values('Frequency', ascending=False).iloc[0]
                     st.markdown(f'<div class="stat-val">{muf_row["Frequency"]} MHz</div><div class="stat-label">MAX MUF: {muf_row["Station"]} caught by {muf_row["DXer"]} ({muf_row[dx_loc_col]}) on {muf_row["Date_Str"]} at {muf_row["Local_Time"]} • {muf_row[d_col]:,.0f} MI</div>', unsafe_allow_html=True)
-                    
                     dist_row = c_df.sort_values(d_col, ascending=False).iloc[0]
                     st.markdown(f'<div class="stat-val">{dist_row[d_col]:,.0f} MILES</div><div class="stat-label">MAX DISTANCE: {dist_row["Frequency"]} MHz - {dist_row["Station"]} caught by {dist_row["DXer"]} ({dist_row[dx_loc_col]}) on {dist_row["Date_Str"]} at {dist_row["Local_Time"]}</div>', unsafe_allow_html=True)
 
@@ -462,3 +431,7 @@ elif selected_page == "TEMPORAL TRENDS":
                     st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True); m_y, y_yr = s_y[m_name_col].value_counts(), s_y[y_col].value_counts()
                     st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Month</div><div class="stat-val" style="margin-top:0px;">{str(m_y.idxmax()).upper()} ({m_y.max()})</div></div>', unsafe_allow_html=True)
                     st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True); f_y = s_y.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{f_y[d_col]:,.0f} MILES</div><div class="stat-label">{f_y["Station"]} by {f_y["DXer"]}</div>', unsafe_allow_html=True)
+
+# 9. MODULE 5 & 6 (LOCKED PLACEHOLDERS)
+elif selected_page == "FREQUENCY & MUF": st.header("Frequency & MUF Analysis Dashboard"); st.info("Module under construction for Phase 2 Deployment.")
+elif selected_page == "STATION & RDS IQ": st.header("Station & RDS Intelligence Hub"); st.info("Module under construction for Phase 2 Deployment.")
