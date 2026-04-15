@@ -209,7 +209,8 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 ev_hub = st.plotly_chart(fig_hub, use_container_width=True, on_select="rerun", key=f"dist_hub_{st.session_state.dist_map_key}")
                 if ev_hub and "selection" in ev_hub and ev_hub["selection"]["points"]:
                     nt = ev_hub["selection"]["points"][0]["y"]
-                    if st.session_state.selected_tier != nt: st.session_state.selected_tier = nt; st.rerun()
+                    if st.session_state.selected_tier != nt:
+                        st.session_state.selected_tier = nt; st.rerun()
             pulse_data = geo_df.groupby(['Local_Month', dd_col]).size().reset_index(name='Logs'); fig_pulse = px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', color_discrete_sequence=['#D32F2F', '#FFA500', '#FFFFFF', '#888888'], template="plotly_dark"); st.plotly_chart(fig_pulse, use_container_width=True)
 
         if st.session_state.selected_tier:
@@ -337,6 +338,7 @@ elif selected_page == "TEMPORAL TRENDS":
 
         # 2. SEASONAL DENSITY MATRIX
         st.markdown("#### 📊 SEASONAL DENSITY MATRIX")
+        st.caption("👈 Shows the percentage of days in each month/year that recorded at least one Es log. A 'hotter' Signal Red/Nuclear Yellow intensity indicates high seasonal density.")
         m_days = {"May": 31, "June": 30, "July": 31, "August": 31}
         density_data = filt_df[filt_df[m_name_col].isin(list(m_days.keys()))]
         if not density_data.empty:
@@ -348,15 +350,20 @@ elif selected_page == "TEMPORAL TRENDS":
             density_pivot.loc['SEASON TOTAL'] = (density_data.groupby(y_col)['Date_Obj'].nunique() / 123) * 100
             density_pivot['AVERAGES'] = density_pivot.mean(axis=1)
             density_pivot.columns = [str(c) for c in density_pivot.columns]
-            fig_dens = px.imshow(density_pivot, text_auto=".1f", color_continuous_scale='YlOrRd', labels=dict(color="% Density"), template="plotly_dark")
+            # Formatted text matrix with % signs
+            dens_text = density_pivot.applymap(lambda x: f"{x:.1f}%")
+            # Heatmap with reversed colors (Red/Yellow = High)
+            fig_dens = px.imshow(density_pivot, text_auto=False, color_continuous_scale='YlOrRd_r', labels=dict(color="% Density"), template="plotly_dark")
+            fig_dens.update_traces(text=dens_text.values, texttemplate="%{text}")
             fig_dens.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
             st.plotly_chart(fig_dens, use_container_width=True)
 
         # 3. INTERNATIONAL SEASONAL FLOW
         st.markdown("#### 🌎 INTERNATIONAL SEASONAL FLOW")
-        intl_data = filt_df[~filt_df['Country'].isin(['USA', 'Canada'])]
-        if not intl_data.empty:
-            intl_flow = intl_data.groupby(['Country', m_name_col]).size().reset_index(name='Logs')
+        intl_raw = filt_df[~filt_df['Country'].isin(['USA', 'Canada'])]
+        if not intl_raw.empty:
+            intl_flow = intl_raw.groupby(['Country', m_name_col]).size().reset_index(name='Logs')
+            intl_flow['Logs'] = intl_flow['Logs'].astype(float).fillna(0)
             fig_intl = px.bar(intl_flow, x='Logs', y='Country', color=m_name_col, orientation='h', template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00'], barnorm='percent')
             fig_intl.update_layout(height=500, barmode='stack', yaxis={'categoryorder':'total ascending'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="% Monthly Distribution")
             ev_intl = st.plotly_chart(fig_intl, use_container_width=True, on_select="rerun", key="intl_flow_chart")
@@ -367,9 +374,9 @@ elif selected_page == "TEMPORAL TRENDS":
                 st.markdown(f"### 📡 {c_sel.upper()} MONTHLY INTEL")
                 if st.button(f"❌ CLEAR {c_sel.upper()}"):
                     st.session_state.selected_intl_country = None; st.rerun()
-                c_df = intl_data[intl_data['Country'] == c_sel]
-                # Vertical multi-line list to prevent syntax errors
-                c_rep = c_df.groupby(m_name_col).agg({
+                c_df = intl_raw[intl_raw['Country'] == c_sel]
+                c_grp = c_df.groupby(m_name_col)
+                c_rep = c_grp.agg({
                     'Frequency': 'max',
                     'Station': 'count',
                     d_col: 'max'
