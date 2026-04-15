@@ -117,6 +117,9 @@ def load_data():
         m_name_col = next((c for c in df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name')
         dx_st_col = next((c for c in df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
         
+        # SCIENTIFIC DISCOVERY LOGIC: First-ever station log
+        df['Station_Discovery_Year'] = df.groupby('Station')[y_col].transform('min')
+
         return df, df['Date_Obj'].max(), dist_col, dd_col, 'DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', l_dx, h_col, y_col, dom_col, m_name_col, dx_st_col
     except Exception as e:
         st.error(f"Link Failure: {e}"); return pd.DataFrame(), None, "Distance", "Distribution", None, None, None, None, "DX", "Hour", "Year", "Day", "Month", "DXer_State"
@@ -161,7 +164,7 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state, '
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULE 1: DASHBOARD OVERVIEW
+# 5. MODULES 1-3 (LOCKED)
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
@@ -173,7 +176,6 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -191,7 +193,6 @@ elif selected_page == "ES-CLOUD TRACKER":
         speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "3x": {"delay": 0.05, "step": 3}, "4x": {"delay": 0.01, "step": 4}}
         play_speed = st.selectbox("Playback Speed", options=list(speed_sets.keys()), index=1)
         if st.button("📺 VIEW FULL SCREEN" if not st.session_state.full_screen else "❌ EXIT"): st.session_state.full_screen = not st.session_state.full_screen; st.rerun()
-
     if not map_df.empty:
         times = sorted(map_df['Time_Str'].dropna().unique().tolist())
         pb1, pb2, pb_txt = st.columns([1, 1, 3])
@@ -200,16 +201,7 @@ elif selected_page == "ES-CLOUD TRACKER":
         current_time = times[st.session_state.p_idx] if st.session_state.playing else hc2.select_slider("Time Control", options=["SHOW ALL"] + times, value="SHOW ALL")
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
         render_df = map_df if current_time == "SHOW ALL" else map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(current_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))]
-        
-        layers = [pdk.Layer('HeatmapLayer' if vm == "Es Cloud Location Heatmap" else 'LineLayer', 
-                            data=render_df[['Final_Mid_Lat', 'Final_Mid_Lon']].dropna() if vm == "Es Cloud Location Heatmap" else render_df[[dx_lat_f, dx_lon_f, st_lat_f, st_lon_f]].dropna(), 
-                            get_position='[Final_Mid_Lon, Final_Mid_Lat]' if vm == "Es Cloud Location Heatmap" else None, 
-                            get_source_position=f'[{dx_lon_f}, {dx_lat_f}]' if vm != "Es Cloud Location Heatmap" else None, 
-                            get_target_position=f'[{st_lon_f}, {st_lat_f}]' if vm != "Es Cloud Location Heatmap" else None, 
-                            radius_pixels=65, intensity=2.0, threshold=0.03, 
-                            color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]] if vm == "Es Cloud Location Heatmap" else None, 
-                            get_width=1, get_color=[211, 47, 47, 45])]
-                            
+        layers = [pdk.Layer('HeatmapLayer' if vm == "Es Cloud Location Heatmap" else 'LineLayer', data=render_df[['Final_Mid_Lat', 'Final_Mid_Lon']].dropna() if vm == "Es Cloud Location Heatmap" else render_df[[dx_lat_f, dx_lon_f, st_lat_f, st_lon_f]].dropna(), get_position='[Final_Mid_Lon, Final_Mid_Lat]' if vm == "Es Cloud Location Heatmap" else None, get_source_position=f'[{dx_lon_f}, {dx_lat_f}]' if vm != "Es Cloud Location Heatmap" else None, get_target_position=f'[{st_lon_f}, {st_lat_f}]' if vm != "Es Cloud Location Heatmap" else None, radius_pixels=65, intensity=2.0, threshold=0.03, color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]] if vm == "Es Cloud Location Heatmap" else None, get_width=1, get_color=[211, 47, 47, 45])]
         st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers))
         st.markdown("""<div class="watermark"><img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="width: 250px;"></div>""", unsafe_allow_html=True)
         if st.session_state.playing:
@@ -217,14 +209,12 @@ elif selected_page == "ES-CLOUD TRACKER":
             if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
-# 7. MODULE 3: GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
     st.markdown("---")
     geo_df = filt_df.copy(); geo_df = geo_df[geo_df['State'] != 'AM']
     gs = [[0, '#640000'], [0.25, '#D32F2F'], [0.5, '#FF4500'], [0.75, '#FFA500'], [1, '#FFFF00']]
-
     if gv == "Distance Stats":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_tier else st.columns([1, 0.001])
         with col_m:
@@ -411,56 +401,63 @@ elif selected_page == "TEMPORAL TRENDS":
             ev_year = st.plotly_chart(fig_y, use_container_width=True, on_select="rerun", key=f"y_chart_{st.session_state.year_map_key}")
             if ev_year and "selection" in ev_year and ev_year["selection"]["points"]:
                 ny = int(ev_year["selection"]["points"][0]["x"])
-                if st.session_state.selected_year != ny:
-                    st.session_state.selected_year = ny; st.rerun()
+                if st.session_state.selected_year != ny: st.session_state.selected_year = ny; st.rerun()
         
         if st.session_state.selected_year is not None:
             with col_f:
                 yr = st.session_state.selected_year; st.markdown(f"### {yr} SEASON INTEL")
                 if st.button("❌ CLEAR SELECTION", key="cl_yr", use_container_width=True): st.session_state.selected_year = None; st.session_state.year_map_key += 1; st.rerun()
                 s_y = filt_df[filt_df[y_col].astype(int) == int(yr)]
-                
-                st.markdown('<div class="stat-header">SEASON MISSION SUMMARY</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stat-val">{len(s_y):,} LOGS</div>', unsafe_allow_html=True)
-                
-                u_dx = s_y['DXer'].nunique()
-                eff = len(s_y) / u_dx if u_dx > 0 else 0
-                st.markdown('<div class="stat-header">SEASON EFFICIENCY INDEX</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stat-val">{eff:.1f}</div><div class="stat-label">Logs per Active DXer ({u_dx} DXers)</div>', unsafe_allow_html=True)
-
-                st.markdown('<div class="stat-header">STATION INTEL</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stat-val">{s_y["Station"].nunique():,} UNIQUE STATIONS</div>', unsafe_allow_html=True)
-
+                st.markdown('<div class="stat-header">SEASON MISSION SUMMARY</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{len(s_y):,} LOGS</div>', unsafe_allow_html=True)
+                u_dx = s_y['DXer'].nunique(); eff = len(s_y) / u_dx if u_dx > 0 else 0
+                st.markdown('<div class="stat-header">SEASON EFFICIENCY INDEX</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{eff:.1f}</div><div class="stat-label">Logs per Active DXer ({u_dx} DXers)</div>', unsafe_allow_html=True)
+                st.markdown('<div class="stat-header">STATION INTEL</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_y["Station"].nunique():,} UNIQUE STATIONS</div>', unsafe_allow_html=True)
                 if not s_y.empty:
-                    m_y = s_y[m_name_col].value_counts()
-                    st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="stat-val" style="margin-top:0px;">{str(m_y.idxmax()).upper()} ({m_y.max()})</div><div class="stat-label">Highest Volume Month</div>', unsafe_allow_html=True)
+                    m_y = s_y[m_name_col].value_counts(); st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val" style="margin-top:0px;">{str(m_y.idxmax()).upper()} ({m_y.max()})</div><div class="stat-label">Highest Volume Month</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-header">GEOGRAPHIC SCOPE</div>', unsafe_allow_html=True); gc = st.columns(2); gc[0].metric("US States", s_y[s_y['Country'] == 'USA']['State'].nunique()); gc[0].metric("Can. Prov", s_y[s_y['Country'] == 'Canada']['State'].nunique()); gc[1].metric("Mex. States", s_y[s_y['Country'] == 'Mexico']['State'].nunique()); gc[1].metric("Countries", s_y['Country'].nunique())
+                    st.markdown('<div class="stat-header">TOP 5 CATCH PATHS (STATE ➔ STATE)</div>', unsafe_allow_html=True); s_paths = s_y.groupby([dx_st_col, 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5); s_paths['Path'] = s_paths[dx_st_col].astype(str) + " ➔ " + s_paths['State'].astype(str); st.dataframe(s_paths[['Path', 'L']], hide_index=True)
+                    st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True); st.dataframe(s_y.groupby('Station').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
+                    st.markdown('<div class="stat-header">TOP 5 MISSION DAYS</div>', unsafe_allow_html=True); st.dataframe(s_y.groupby('Date_Str').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
+                    f_y = s_y.sort_values(d_col, ascending=False).iloc[0]; st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{f_y[d_col]:,.0f} MILES</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-label">{f_y["Frequency"]} - {f_y["Station"]}, {f_y["City"]}, {f_y["State"]} by {f_y["DXer"]} ({f_y[dx_loc_col]}) on {f_y["Date_Str"]} at {f_y["Local_Time"]}</div>', unsafe_allow_html=True)
 
-                    st.markdown('<div class="stat-header">GEOGRAPHIC SCOPE</div>', unsafe_allow_html=True)
-                    gc = st.columns(2)
-                    gc[0].metric("US States", s_y[s_y['Country'] == 'USA']['State'].nunique())
-                    gc[0].metric("Can. Prov", s_y[s_y['Country'] == 'Canada']['State'].nunique())
-                    gc[1].metric("Mex. States", s_y[s_y['Country'] == 'Mexico']['State'].nunique())
-                    gc[1].metric("Countries", s_y['Country'].nunique())
+        # NEW MACRO-TREND CHARTS BELOW CENTERPIECE
+        st.markdown("---")
+        st.markdown("### 📊 LONG-TERM SEASONAL PERFORMANCE AUDITS")
+        r1, r2 = st.columns(2)
+        with r1:
+            st.markdown("#### Monthly Log Contribution (%)")
+            m_cont = filt_df.groupby([y_col, m_name_col]).size().reset_index(name='L')
+            fig_cont = px.bar(m_cont, x=y_col, y='L', color=m_name_col, template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00'])
+            fig_cont.update_layout(barnorm='percent', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="% Contribution", xaxis_title="Season")
+            st.plotly_chart(fig_cont, use_container_width=True)
 
-                    # Updated Path Analysis: State to State
-                    st.markdown('<div class="stat-header">TOP 5 CATCH PATHS (STATE ➔ STATE)</div>', unsafe_allow_html=True)
-                    s_paths = s_y.groupby([dx_st_col, 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
-                    s_paths['Path'] = s_paths[dx_st_col].astype(str) + " ➔ " + s_paths['State'].astype(str)
-                    st.dataframe(s_paths[['Path', 'L']], hide_index=True)
+            st.markdown("#### Unique Stations per Month")
+            u_stat = filt_df.groupby([y_col, m_name_col])['Station'].nunique().reset_index(name='U')
+            fig_u = px.bar(u_stat, x=y_col, y='U', color=m_name_col, barmode='group', template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00'])
+            fig_u.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Station Count", xaxis_title="Season")
+            st.plotly_chart(fig_u, use_container_width=True)
 
-                    st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
-                    st.dataframe(s_y.groupby('Station').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
+        with r2:
+            st.markdown("#### Station Discovery Yield (First-Ever Logs)")
+            new_logs = filt_df[filt_df[y_col] == filt_df['Station_Discovery_Year']].groupby(y_col).size().reset_index(name='N')
+            fig_new = px.line(new_logs, x=y_col, y='N', markers=True, template='plotly_dark', color_discrete_sequence=['#FFFF00'])
+            fig_new.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="New Stations Found", xaxis_title="Season")
+            st.plotly_chart(fig_new, use_container_width=True)
 
-                    st.markdown('<div class="stat-header">TOP 5 MISSION DAYS</div>', unsafe_allow_html=True)
-                    st.dataframe(s_y.groupby('Date_Str').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
+            st.markdown("#### Active Es Days per Month")
+            act_days = filt_df.groupby([y_col, m_name_col])['Date_Obj'].nunique().reset_index(name='D')
+            fig_act = px.bar(act_days, x=y_col, y='D', color=m_name_col, barmode='stack', template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00'])
+            fig_act.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Active Day Count", xaxis_title="Season")
+            st.plotly_chart(fig_act, use_container_width=True)
 
-                    f_y = s_y.sort_values(d_col, ascending=False).iloc[0]
-                    st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="stat-val">{f_y[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="stat-label">{f_y["Frequency"]} - {f_y["Station"]}, {f_y["City"]}, {f_y["State"]} by {f_y["DXer"]} ({f_y[dx_loc_col]}) on {f_y["Date_Str"]} at {f_y["Local_Time"]}</div>', unsafe_allow_html=True)
+        st.markdown("#### Opening Strength: Logs per Active Day")
+        str_data = filt_df.groupby([y_col, m_name_col]).agg({'Station': 'count', 'Date_Obj': 'nunique'}).reset_index()
+        str_data['Intensity'] = str_data['Station'] / str_data['Date_Obj']
+        fig_str = px.bar(str_data, x=y_col, y='Intensity', color=m_name_col, barmode='group', template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00'])
+        fig_str.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Avg Logs / Opening Day", xaxis_title="Season")
+        st.plotly_chart(fig_str, use_container_width=True)
 
 # 9. PLACEHOLDERS FOR PHASE 2
-elif selected_page == "FREQUENCY & MUF": st.header("Frequency & MUF Analysis Dashboard"); st.info("Module under construction: SDR Radio Dial & MUF Heatmap integration.")
-elif selected_page == "DXER INTELLIGENCE": st.header("DXer Network Intelligence"); st.info("Module under construction: Receiver Location Heatmaps & Network Efficiency.")
-elif selected_page == "STATION & RDS IQ": st.header("Station & RDS Intelligence Hub"); st.info("Module under construction: WTFDA Station Density & RDS Capture forensics.")
+elif selected_page == "FREQUENCY & MUF": st.header("Frequency & MUF Analysis Dashboard"); st.info("Module under construction for Phase 2 Deployment.")
+elif selected_page == "DXER INTELLIGENCE": st.header("DXer Network Intelligence Hub"); st.info("Module under construction for Phase 2 Deployment.")
+elif selected_page == "STATION & RDS IQ": st.header("Station & RDS Intelligence Hub"); st.info("Module under construction for Phase 2 Deployment.")
