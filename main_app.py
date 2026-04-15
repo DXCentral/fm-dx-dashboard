@@ -12,16 +12,21 @@ from google.oauth2 import service_account
 # 1. THEME & UI STYLING
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
 
-# Safe State Initialization (Optimized for Blueprint 3.1)
-state_keys = {
-    'full_screen': False, 'p_idx': 0, 'playing': False, 'reset_count': 0,
-    'selected_state': None, 'selected_tier': None, 'selected_hour': None,
-    'selected_year': None, 'map_key': 500000, 'hour_map_key': 600000,
-    'year_map_key': 700000, 'dist_map_key': 800000, 'almanac_month': "June",
-    'selected_intl_country': None
-}
-for key, default in state_keys.items():
-    if key not in st.session_state: st.session_state[key] = default
+# EXPLICIT SESSION STATE INITIALIZATION (LOCKED)
+if 'full_screen' not in st.session_state: st.session_state.full_screen = False
+if 'p_idx' not in st.session_state: st.session_state.p_idx = 0
+if 'playing' not in st.session_state: st.session_state.playing = False
+if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
+if 'selected_state' not in st.session_state: st.session_state.selected_state = None
+if 'selected_tier' not in st.session_state: st.session_state.selected_tier = None
+if 'selected_hour' not in st.session_state: st.session_state.selected_hour = None
+if 'selected_year' not in st.session_state: st.session_state.selected_year = None
+if 'selected_intl_country' not in st.session_state: st.session_state.selected_intl_country = None
+if 'map_key' not in st.session_state: st.session_state.map_key = 500000
+if 'hour_map_key' not in st.session_state: st.session_state.hour_map_key = 600000
+if 'year_map_key' not in st.session_state: st.session_state.year_map_key = 700000
+if 'dist_map_key' not in st.session_state: st.session_state.dist_map_key = 800000
+if 'almanac_month' not in st.session_state: st.session_state.almanac_month = "June"
 
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
@@ -109,7 +114,7 @@ with st.sidebar:
         icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "broadcast-pin"], 
         default_index=0)
 
-# 4. GLOBAL FILTERS
+# 4. GLOBAL FILTERS (RESTORED TO EXPLICIT STACK)
 if not st.session_state.full_screen:
     rk = f"v{st.session_state.reset_count}" 
     with st.expander(label="GLOBAL FILTERS", expanded=True):
@@ -119,17 +124,21 @@ if not st.session_state.full_screen:
         f_stat = r1[2].selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key=f"f3_{rk}")
         f_state = r1[3].selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key=f"f4_{rk}")
         f_ctry = r1[4].selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key=f"f5_{rk}")
+        
         f_dxco = r2[0].selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().astype(str).tolist()), key=f"f6_{rk}")
         f_dxst = r2[1].selectbox("DXer State/Prov", ["All"] + sorted(df[dx_st_col].dropna().unique().astype(str).tolist()), key=f"f7_{rk}")
         f_month = r2[2].selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key=f"f8_{rk}")
         f_year = r2[3].selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key=f"f9_{rk}")
         f_day = r2[4].selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key=f"f10_{rk}")
+        
         f_dist = r3[0].selectbox("Distance Dist.", ["All"] + sorted(df[dd_col].dropna().unique().astype(str).tolist()), key=f"f11_{rk}")
         f_reg = r3[1].selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key=f"f12_{rk}")
         rds_c = 'RDS Decode?' if 'RDS Decode?' in df.columns else 'RDS Decode'
         f_rds = r3[2].selectbox("RDS Decode?", ["All"] + (sorted(df[rds_c].dropna().unique().astype(str).tolist()) if rds_c in df.columns else []), key=f"f13_{rk}")
+        
         if st.button("RESET ALL FILTERS"): 
-            st.session_state.reset_count += 1; st.rerun()
+            st.session_state.reset_count += 1
+            st.rerun()
 else:
     f_freq, f_dxer, f_stat, f_state, f_ctry, f_dxco, f_dxst, f_month, f_year, f_day, f_dist, f_reg, f_rds = ["All"] * 13
 
@@ -138,7 +147,7 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state, '
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. DASHBOARD OVERVIEW
+# 5. MODULE 1: DASHBOARD OVERVIEW (LOCKED)
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
@@ -150,7 +159,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. ES-CLOUD TRACKER
+# 6. MODULE 2: ES-CLOUD TRACKER (LOCKED)
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -185,7 +194,7 @@ elif selected_page == "ES-CLOUD TRACKER":
             if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
-# 7. GEOGRAPHIC ANALYSIS
+# 7. MODULE 3: GEOGRAPHIC ANALYSIS (LOCKED)
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
@@ -217,7 +226,6 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 st.markdown('<div class="stat-header">TIER KINGS</div>', unsafe_allow_html=True); st.dataframe(s_of.groupby('DXer').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
                 st.markdown('<div class="stat-header">ORIGIN HOTSPOTS</div>', unsafe_allow_html=True); st.dataframe(s_of.groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
                 st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True); t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='L').sort_values('L', ascending=False).head(5); t5['M'] = t5['L']; st.dataframe(t5, column_config={"Frequency":"MHz", "L":st.column_config.NumberColumn("Logs", format="%d"), "M":st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['L'].max() if not t5.empty else 100))}, hide_index=True)
-
     else:
         if gv == "US States": target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
         elif gv == "Canadian Stats": target, scope, loc_mode, gj_url, gj_key = 'Canada', 'north america', 'geojson-id', "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson", "properties.name"
@@ -295,10 +303,10 @@ elif selected_page == "TEMPORAL TRENDS":
         m_days = {"May": 31, "June": 30, "July": 31, "August": 31}
         density_data = filt_df[filt_df[m_name_col].isin(list(m_days.keys()))]
         if not density_data.empty:
-            density_pivot = density_data.groupby([m_name_col, y_col])['Date_Obj'].nunique().unstack(fill_value=0)
+            density_pivot = density_data.groupby([m_name_col, y_col])['Date_Obj'].nunique().unstack(fill_value=0).astype(float)
             for m, total_d in m_days.items():
                 if m in density_pivot.index: density_pivot.loc[m] = (density_pivot.loc[m] / total_d) * 100
-            density_pivot.loc['SEASON TOTAL'] = (density_data.groupby(y_col)['Date_Obj'].nunique() / 124) * 100
+            density_pivot.loc['SEASON TOTAL'] = (density_data.groupby(y_col)['Date_Obj'].nunique() / 123) * 100
             density_pivot['AVERAGES'] = density_pivot.mean(axis=1)
             st.dataframe(density_pivot.style.format("{:.1f}%").background_gradient(cmap='YlOrRd', axis=None), use_container_width=True)
 
