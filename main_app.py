@@ -161,7 +161,7 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state, '
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULE 1-2 (DASHBOARD & ES-CLOUD TRACKER LOCKED)
+# 5. MODULE 1: DASHBOARD OVERVIEW
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
@@ -173,6 +173,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
+# 6. MODULE 2: ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -199,6 +200,7 @@ elif selected_page == "ES-CLOUD TRACKER":
         current_time = times[st.session_state.p_idx] if st.session_state.playing else hc2.select_slider("Time Control", options=["SHOW ALL"] + times, value="SHOW ALL")
         pb_txt.write(f"## 🕒 CURRENT TIME: {current_time}")
         render_df = map_df if current_time == "SHOW ALL" else map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(current_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))]
+        
         layers = [pdk.Layer('HeatmapLayer' if vm == "Es Cloud Location Heatmap" else 'LineLayer', 
                             data=render_df[['Final_Mid_Lat', 'Final_Mid_Lon']].dropna() if vm == "Es Cloud Location Heatmap" else render_df[[dx_lat_f, dx_lon_f, st_lat_f, st_lon_f]].dropna(), 
                             get_position='[Final_Mid_Lon, Final_Mid_Lat]' if vm == "Es Cloud Location Heatmap" else None, 
@@ -207,6 +209,7 @@ elif selected_page == "ES-CLOUD TRACKER":
                             radius_pixels=65, intensity=2.0, threshold=0.03, 
                             color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]] if vm == "Es Cloud Location Heatmap" else None, 
                             get_width=1, get_color=[211, 47, 47, 45])]
+                            
         st.pydeck_chart(pdk.Deck(map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', initial_view_state=pdk.ViewState(latitude=32, longitude=-95, zoom=3.4), layers=layers))
         st.markdown("""<div class="watermark"><img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="width: 250px;"></div>""", unsafe_allow_html=True)
         if st.session_state.playing:
@@ -214,7 +217,7 @@ elif selected_page == "ES-CLOUD TRACKER":
             if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
-# 6. MODULE 3: GEOGRAPHIC ANALYSIS (LOCKED)
+# 7. MODULE 3: GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
@@ -418,42 +421,44 @@ elif selected_page == "TEMPORAL TRENDS":
                 s_y = filt_df[filt_df[y_col].astype(int) == int(yr)]
                 
                 st.markdown('<div class="stat-header">SEASON MISSION SUMMARY</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stat-val">{len(s_y):,} LOGS</div><div class="stat-label">Total Volume of Catch</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-val">{len(s_y):,} LOGS</div>', unsafe_allow_html=True)
                 
                 u_dx = s_y['DXer'].nunique()
                 eff = len(s_y) / u_dx if u_dx > 0 else 0
                 st.markdown('<div class="stat-header">SEASON EFFICIENCY INDEX</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stat-val">{eff:.1f}</div><div class="stat-label">Logs per Active DXer</div>', unsafe_allow_html=True)
-                
-                st.markdown('<div class="stat-header">RECEIVER NETWORK</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stat-val">{u_dx}</div><div class="stat-label">Unique DXers Reporting</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-val">{eff:.1f}</div><div class="stat-label">Logs per Active DXer ({u_dx} DXers)</div>', unsafe_allow_html=True)
 
                 st.markdown('<div class="stat-header">STATION INTEL</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stat-val">{s_y["Station"].nunique():,}</div><div class="stat-label">Unique Stations Logged</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-val">{s_y["Station"].nunique():,} UNIQUE STATIONS</div>', unsafe_allow_html=True)
 
-                # Geographic Breakdown Metrics
-                st.markdown('<div class="stat-header">GEOGRAPHIC SCOPE</div>', unsafe_allow_html=True)
-                gc = st.columns(2)
-                gc[0].metric("US States", s_y[s_y['Country'] == 'USA']['State'].nunique())
-                gc[0].metric("Can. Prov", s_y[s_y['Country'] == 'Canada']['State'].nunique())
-                gc[1].metric("Mex. States", s_y[s_y['Country'] == 'Mexico']['State'].nunique())
-                gc[1].metric("Countries", s_y['Country'].nunique())
+                if not s_y.empty:
+                    m_y = s_y[m_name_col].value_counts()
+                    st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val" style="margin-top:0px;">{str(m_y.idxmax()).upper()} ({m_y.max()})</div><div class="stat-label">Highest Volume Month</div>', unsafe_allow_html=True)
 
-                # Top Leaderboards
-                st.markdown('<div class="stat-header">TOP 5 CATCH PATHS</div>', unsafe_allow_html=True)
-                paths = s_y.groupby(['DXer', 'Station']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
-                paths['Path'] = paths['DXer'].astype(str) + " ➔ " + paths['Station'].astype(str)
-                st.dataframe(paths[['Path', 'L']], hide_index=True)
+                    st.markdown('<div class="stat-header">GEOGRAPHIC SCOPE</div>', unsafe_allow_html=True)
+                    gc = st.columns(2)
+                    gc[0].metric("US States", s_y[s_y['Country'] == 'USA']['State'].nunique())
+                    gc[0].metric("Can. Prov", s_y[s_y['Country'] == 'Canada']['State'].nunique())
+                    gc[1].metric("Mex. States", s_y[s_y['Country'] == 'Mexico']['State'].nunique())
+                    gc[1].metric("Countries", s_y['Country'].nunique())
 
-                st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
-                st.dataframe(s_y.groupby('Station').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
+                    # Updated Path Analysis: State to State
+                    st.markdown('<div class="stat-header">TOP 5 CATCH PATHS (STATE ➔ STATE)</div>', unsafe_allow_html=True)
+                    s_paths = s_y.groupby([dx_st_col, 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                    s_paths['Path'] = s_paths[dx_st_col].astype(str) + " ➔ " + s_paths['State'].astype(str)
+                    st.dataframe(s_paths[['Path', 'L']], hide_index=True)
 
-                st.markdown('<div class="stat-header">TOP 5 MISSION DAYS</div>', unsafe_allow_html=True)
-                st.dataframe(s_y.groupby('Date_Str').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
+                    st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
+                    st.dataframe(s_y.groupby('Station').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
 
-                f_y = s_y.sort_values(d_col, ascending=False).iloc[0]
-                st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stat-val">{f_y[d_col]:,.0f} MILES</div><div class="stat-label">{f_y["Station"]} by {f_y["DXer"]}</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-header">TOP 5 MISSION DAYS</div>', unsafe_allow_html=True)
+                    st.dataframe(s_y.groupby('Date_Str').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
+
+                    f_y = s_y.sort_values(d_col, ascending=False).iloc[0]
+                    st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{f_y[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-label">{f_y["Frequency"]} - {f_y["Station"]}, {f_y["City"]}, {f_y["State"]} by {f_y["DXer"]} ({f_y[dx_loc_col]}) on {f_y["Date_Str"]} at {f_y["Local_Time"]}</div>', unsafe_allow_html=True)
 
 # 9. PLACEHOLDERS FOR PHASE 2
 elif selected_page == "FREQUENCY & MUF": st.header("Frequency & MUF Analysis Dashboard"); st.info("Module under construction: SDR Radio Dial & MUF Heatmap integration.")
