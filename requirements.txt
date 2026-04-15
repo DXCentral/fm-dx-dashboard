@@ -10,3 +10,4 @@ opencv-python-headless
 plotly
 folium
 streamlit-folium
+matplotlib
