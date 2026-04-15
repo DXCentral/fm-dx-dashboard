@@ -64,7 +64,7 @@ def get_avg_date(dates_series):
         return (datetime.datetime(2024, 1, 1) + datetime.timedelta(days=int(ds.dt.dayofyear.mean()) - 1)).strftime('%b %d')
     except: return "N/A"
 
-# 2. DATA LOADING (REINFORCED FOR 2025 VISIBILITY)
+# 2. DATA LOADING (REINFORCED FOR 2025 PATH VISIBILITY)
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -83,27 +83,38 @@ def load_data():
         df_coords['join_dx'], df_coords['join_st'] = df_coords[c_dx].str.upper().str.strip(), df_coords[c_st].str.upper().str.strip()
         df_coords = df_coords.drop_duplicates(subset=['join_dx', 'join_st'])
         
+        # PRIMARY MERGE
         df = df_logs.merge(df_coords, on=['join_dx', 'join_st'], how='left', suffixes=('', '_coord'))
         
-        # COLUMN DETECTION
-        mid_lat_col = next((c for c in df.columns if c == 'Mid_Lat'), None)
-        mid_lon_col = next((c for c in df.columns if c == 'Mid_Long'), None)
-        dx_lat_source = next((c for c in df.columns if 'DXer_Latitude' in c or ('DX' in c and 'Lat' in c)), None)
-        dx_lon_source = next((c for c in df.columns if 'DXer_Longitude' in c or ('DX' in c and 'Lon' in c)), None)
-        st_lat_source = next((c for c in df.columns if 'Station_Lat' in c or ('ST' in c and 'Lat' in c)), None)
-        st_lon_source = next((c for c in df.columns if 'Station_Long' in c or ('ST' in c and 'Lon' in c)), None)
+        # 1. IDENTIFY ALL POTENTIAL COORDINATE COLUMNS
+        mid_lat_raw = next((c for c in df.columns if c == 'Mid_Lat'), None)
+        mid_lon_raw = next((c for c in df.columns if c == 'Mid_Long'), None)
+        dx_lat_raw = next((c for c in df.columns if 'DXer_Latitude' in c or ('DX' in c and 'Lat' in c and 'coord' not in c)), None)
+        dx_lon_raw = next((c for c in df.columns if 'DXer_Longitude' in c or ('DX' in c and 'Lon' in c and 'coord' not in c)), None)
+        st_lat_raw = next((c for c in df.columns if 'Station_Lat' in c or ('ST' in c and 'Lat' in c and 'coord' not in c)), None)
+        st_lon_raw = next((c for c in df.columns if 'Station_Long' in c or ('ST' in c and 'Lon' in c and 'coord' not in c)), None)
 
-        numeric_targets = [c for c in [mid_lat_col, mid_lon_col, dx_lat_source, dx_lon_source, st_lat_source, st_lon_source] if c is not None]
+        # 2. FORCE NUMERIC CLEANING
+        numeric_targets = [c for c in [mid_lat_raw, mid_lon_raw, dx_lat_raw, dx_lon_raw, st_lat_raw, st_lon_raw, 'DXer_Latitude_coord', 'DXer_Longitude_coord', 'Station_Lat_coord', 'Station_Long_coord'] if c in df.columns]
         for c in numeric_targets:
             df[c] = pd.to_numeric(df[c].astype(str).str.replace('°', '').str.strip(), errors='coerce').astype('float32')
 
-        if mid_lat_col and mid_lon_col:
-            df['Final_Mid_Lat'] = df[mid_lat_col].fillna((df[dx_lat_source] + df[st_lat_source]) / 2)
-            df['Final_Mid_Lon'] = df[mid_lon_col].fillna((df[dx_lon_source] + df[st_lon_source]) / 2)
+        # 3. TRIPLE-SOURCE FINALIZATION (Look in Lookup Table -> Look in Raw Sheet -> Calculate)
+        # Final DXer Coords
+        df['Final_DX_Lat'] = df['DXer_Latitude_coord'].fillna(df[dx_lat_raw] if dx_lat_raw else np.nan)
+        df['Final_DX_Lon'] = df['DXer_Longitude_coord'].fillna(df[dx_lon_raw] if dx_lon_raw else np.nan)
+        # Final Station Coords
+        df['Final_ST_Lat'] = df['Station_Lat_coord'].fillna(df[st_lat_raw] if st_lat_raw else np.nan)
+        df['Final_ST_Lon'] = df['Station_Long_coord'].fillna(df[st_lon_raw] if st_lon_raw else np.nan)
+        # Final Midpoints (Heatmap)
+        if mid_lat_raw and mid_lon_raw:
+            df['Final_Mid_Lat'] = df[mid_lat_raw].fillna((df['Final_DX_Lat'] + df['Final_ST_Lat']) / 2)
+            df['Final_Mid_Lon'] = df[mid_lon_raw].fillna((df['Final_DX_Lon'] + df['Final_ST_Lon']) / 2)
         else:
-            df['Final_Mid_Lat'] = (df[dx_lat_source] + df[st_lat_source]) / 2
-            df['Final_Mid_Lon'] = (df[dx_lon_source] + df[st_lon_source]) / 2
+            df['Final_Mid_Lat'] = (df['Final_DX_Lat'] + df['Final_ST_Lat']) / 2
+            df['Final_Mid_Lon'] = (df['Final_DX_Lon'] + df['Final_ST_Lon']) / 2
 
+        # Final Meta formatting
         df['Date_Obj'], df['Time_Str'] = pd.to_datetime(df['Local_Date']).dt.date, pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
         df['Date_Str'] = pd.to_datetime(df['Local_Date']).dt.strftime('%m/%d/%Y')
         
@@ -115,7 +126,7 @@ def load_data():
         m_name_col = next((c for c in df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name')
         dx_st_col = next((c for c in df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
         
-        return df, df['Date_Obj'].max(), dist_col, dd_col, dx_lat_source, dx_lon_source, st_lat_source, st_lon_source, l_dx, h_col, y_col, dom_col, m_name_col, dx_st_col
+        return df, df['Date_Obj'].max(), dist_col, dd_col, 'Final_DX_Lat', 'Final_DX_Lon', 'Final_ST_Lat', 'Final_ST_Lon', l_dx, h_col, y_col, dom_col, m_name_col, dx_st_col
     except Exception as e:
         st.error(f"Link Failure: {e}"); return pd.DataFrame(), None, "Distance", "Distribution", None, None, None, None, "DX", "Hour", "Year", "Day", "Month", "DXer_State"
 
@@ -303,7 +314,8 @@ elif selected_page == "TEMPORAL TRENDS":
             ev_hour = st.plotly_chart(fig_h, use_container_width=True, on_select="rerun", key=f"h_chart_{st.session_state.hour_map_key}")
             if ev_hour and "selection" in ev_hour and ev_hour["selection"]["points"]:
                 new_h = int(ev_hour["selection"]["points"][0]["x"])
-                if st.session_state.selected_hour != new_h: st.session_state.selected_hour = new_h; st.rerun()
+                if st.session_state.selected_hour != new_h:
+                    st.session_state.selected_hour = new_h; st.rerun()
         if st.session_state.selected_hour is not None:
             with col_f:
                 h = st.session_state.selected_hour; st.markdown(f"### HOUR {h:02d}:00 INTEL")
@@ -337,6 +349,7 @@ elif selected_page == "TEMPORAL TRENDS":
                     footer.at['TOTAL LOGS', col] = int(d_slice.sum()); footer.at['ACTIVE DAYS', col] = int(active_count); footer.at['AVG/DAY', col] = int(round(d_slice.sum() / active_count if active_count > 0 else 0))
                     footer.at['DAYS >= 100', col] = int((d_slice >= 100).sum()); footer.at['DAYS >= 500', col] = int((d_slice >= 500).sum())
                 final_pivot = pd.concat([pivot, footer]).reset_index().rename(columns={'index': 'DAY/METRIC'})
+                
                 def style_almanac(df):
                     styles = pd.DataFrame('', index=df.index, columns=df.columns); core_y = [c for c in df.columns if str(c).isdigit()]; core_matrix = df.iloc[:31].get(core_y, pd.DataFrame()); max_v = core_matrix.max().max() if not core_matrix.empty else 100
                     for r_idx in df.index:
@@ -399,7 +412,7 @@ elif selected_page == "TEMPORAL TRENDS":
                     if st.session_state.selected_intl_country != new_intl: st.session_state.selected_intl_country = new_intl; st.rerun()
             if st.session_state.selected_intl_country:
                 with col_intl_f:
-                    c_sel = st.session_state.selected_intl_country; st.markdown(f"### 📡 {c_sel.upper()} INTEL")
+                    c_sel = st.session_state.selected_intl_country; st.markdown(f"### {c_sel.upper()} INTEL")
                     if st.button("❌ CLEAR COUNTRY", use_container_width=True): st.session_state.selected_intl_country = None; st.session_state.intl_map_key += 1; st.rerun()
                     c_df = intl_raw[intl_raw['Country'] == c_sel]
                     st.markdown('<div class="stat-header">MONTHLY DISTRIBUTION</div>', unsafe_allow_html=True)
