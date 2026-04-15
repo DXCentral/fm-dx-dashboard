@@ -343,8 +343,8 @@ elif selected_page == "TEMPORAL TRENDS":
             years_v = [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
             density_pivot = density_data.groupby([m_name_col, y_col])['Date_Obj'].nunique().unstack(fill_value=0).astype(float)
             density_pivot = density_pivot.reindex(columns=years_v, fill_value=0)
-            for m, total_d in m_days.items():
-                if m in density_pivot.index: density_pivot.loc[m] = (density_pivot.loc[m] / total_d) * 100
+            for m in m_days:
+                if m in density_pivot.index: density_pivot.loc[m] = (density_pivot.loc[m] / m_days[m]) * 100
             density_pivot.loc['SEASON TOTAL'] = (density_data.groupby(y_col)['Date_Obj'].nunique() / 123) * 100
             density_pivot['AVERAGES'] = density_pivot.mean(axis=1)
             density_pivot.columns = [str(c) for c in density_pivot.columns]
@@ -368,10 +368,17 @@ elif selected_page == "TEMPORAL TRENDS":
                 if st.button(f"❌ CLEAR {c_sel.upper()}"):
                     st.session_state.selected_intl_country = None; st.rerun()
                 c_df = intl_data[intl_data['Country'] == c_sel]
-                # Break down long lines to prevent SyntaxErrors
-                c_grp = c_df.groupby(m_name_col)
-                c_rep = c_grp.agg({'Frequency': 'max', 'Station': 'count', d_col: 'max'})
-                c_rep = c_rep.rename(columns={'Frequency':'Peak MUF', 'Station':'Total Logs', d_col':'Max Miles'})
+                # Vertical multi-line list to prevent syntax errors
+                c_rep = c_df.groupby(m_name_col).agg({
+                    'Frequency': 'max',
+                    'Station': 'count',
+                    d_col: 'max'
+                })
+                c_rep = c_rep.rename(columns={
+                    'Frequency': 'Peak MUF',
+                    'Station': 'Total Logs',
+                    d_col: 'Max Miles'
+                })
                 st.dataframe(c_rep, use_container_width=True)
 
     elif tv == "Yearly Trends":
