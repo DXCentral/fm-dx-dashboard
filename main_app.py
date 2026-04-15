@@ -64,7 +64,7 @@ def get_avg_date(dates_series):
         return (datetime.datetime(2024, 1, 1) + datetime.timedelta(days=int(ds.dt.dayofyear.mean()) - 1)).strftime('%b %d')
     except: return "N/A"
 
-# 2. DATA LOADING (PRECISION ENGINE FOR PATH VISIBILITY)
+# 2. DATA LOADING (DE-COUPLED JOIN ENGINE)
 @st.cache_data(ttl=2592000)
 def load_data():
     try:
@@ -76,58 +76,43 @@ def load_data():
         df_logs = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`").to_dataframe()
         df_coords = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`").to_dataframe()
         
-        # Discovery logic for join keys
+        # Discovery Logic
         l_dx = next((c for c in df_logs.columns if 'Concatenated' in c and 'DX' in c), 'Concatenated_DXer_Location')
         l_st = next((c for c in df_logs.columns if 'Concatenated' in c and 'Station' in c), 'Concatenated_Station_Location')
-        c_dx = next((c for c in df_coords.columns if 'Concatenated' in c and 'DX' in c), 'Concatenated_DXer_Location')
-        c_st = next((c for c in df_coords.columns if 'Concatenated' in c and 'Station' in c), 'Concatenated_Station_Location')
-        
+        c_dx_key = next((c for c in df_coords.columns if 'Concatenated' in c and 'DX' in c), 'Concatenated_DXer_Location')
+        c_st_key = next((c for c in df_coords.columns if 'Concatenated' in c and 'Station' in c), 'Concatenated_Station_Location')
+
+        # Clean Strings for Joins
         df_logs['join_dx'], df_logs['join_st'] = df_logs[l_dx].str.upper().str.strip(), df_logs[l_st].str.upper().str.strip()
-        df_coords['join_dx'], df_coords['join_st'] = df_coords[c_dx].str.upper().str.strip(), df_coords[c_st].str.upper().str.strip()
-        df_coords = df_coords.drop_duplicates(subset=['join_dx', 'join_st'])
-        
-        # Merge with Lookup table
-        df = df_logs.merge(df_coords, on=['join_dx', 'join_st'], how='left', suffixes=('', '_LKP'))
-        
-        # PRECISION COORDINATE EXTRACTION (Matches Loyd's CSV exactly)
-        def clean_numeric(col_name):
-            if col_name in df.columns:
-                return pd.to_numeric(df[col_name].astype(str).str.replace('°', '').str.strip(), errors='coerce').astype('float32')
-            return None
+        df_coords[c_dx_key] = df_coords[c_dx_key].str.upper().str.strip()
+        df_coords[c_st_key] = df_coords[c_st_key].str.upper().str.strip()
 
-        # Heatmap Midpoints
-        sh_mid_lat = clean_numeric('Mid_Lat')
-        sh_mid_lon = clean_numeric('Mid_Long')
-        
-        # Pathline Endpoints (Look for exact CSV names first, then lookup table)
-        # DXER (Source)
-        s_dx_lat = clean_numeric('DXer_Latitude')
-        s_dx_lon = clean_numeric('DXer_Longitude')
-        l_dx_lat = clean_numeric('DXer_Latitude_LKP')
-        l_dx_lon = clean_numeric('DXer_Longitude_LKP')
-        
-        # STATION (Target)
-        s_st_lat = clean_numeric('Station_Lat')
-        s_st_lon = clean_numeric('Station_Long') # Loyd's CSV uses 'Long'
-        l_st_lat = clean_numeric('Station_Lat_LKP')
-        l_st_lon = clean_numeric('Station_Long_LKP')
+        # DE-COUPLED JOIN LOGIC: Look up DXer and Station independently
+        # 1. Create a Master DXer Coordinate Map
+        dx_map = df_coords[[c_dx_key, 'DXer_Latitude', 'DXer_Longitude']].dropna().drop_duplicates(subset=[c_dx_key])
+        # 2. Create a Master Station Coordinate Map
+        st_map = df_coords[[c_st_key, 'Station_Lat', 'Station_Long']].dropna().drop_duplicates(subset=[c_st_key])
 
-        # DUAL-SOURCE LOGIC: Primary = Log Sheet (for 2025), Secondary = Lookup Table
-        df['Path_DX_Lat'] = s_dx_lat.fillna(l_dx_lat)
-        df['Path_DX_Lon'] = s_dx_lon.fillna(l_dx_lon)
-        df['Path_ST_Lat'] = s_st_lat.fillna(l_st_lat)
-        df['Path_ST_Lon'] = s_st_lon.fillna(l_st_lon)
-        
-        # Final Midpoints
-        if sh_mid_lat is not None and sh_mid_lon is not None:
-            df['Final_Mid_Lat'] = sh_mid_lat.fillna((df['Path_DX_Lat'] + df['Path_ST_Lat']) / 2)
-            df['Final_Mid_Lon'] = sh_mid_lon.fillna((df['Path_DX_Lon'] + df['Path_ST_Lon']) / 2)
+        # 3. Perform Independent Merges
+        df = df_logs.merge(dx_map, left_on='join_dx', right_on=c_dx_key, how='left')
+        df = df.merge(st_map, left_on='join_st', right_on=c_st_key, how='left')
+
+        # PRECISION NUMERIC CONVERSION
+        for c in ['DXer_Latitude', 'DXer_Longitude', 'Station_Lat', 'Station_Long', 'Mid_Lat', 'Mid_Long']:
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c].astype(str).str.replace('°', '').str.strip(), errors='coerce').astype('float32')
+
+        # RESOLVE MIDPOINTS (Priority = Sheet value, Fallback = Calculated)
+        if 'Mid_Lat' in df.columns and 'Mid_Long' in df.columns:
+            df['Final_Mid_Lat'] = df['Mid_Lat'].fillna((df['DXer_Latitude'] + df['Station_Lat']) / 2)
+            df['Final_Mid_Lon'] = df['Mid_Long'].fillna((df['DXer_Longitude'] + df['Station_Long']) / 2)
         else:
-            df['Final_Mid_Lat'] = (df['Path_DX_Lat'] + df['Path_ST_Lat']) / 2
-            df['Final_Mid_Lon'] = (df['Path_DX_Lon'] + df['Path_ST_Lon']) / 2
+            df['Final_Mid_Lat'] = (df['DXer_Latitude'] + df['Station_Lat']) / 2
+            df['Final_Mid_Lon'] = (df['DXer_Longitude'] + df['Station_Long']) / 2
 
-        # Temporal/Meta formatting
-        df['Date_Obj'], df['Time_Str'] = pd.to_datetime(df['Local_Date']).dt.date, pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
+        # Temporal Meta-data
+        df['Date_Obj'] = pd.to_datetime(df['Local_Date']).dt.date
+        df['Time_Str'] = pd.to_datetime(df['Local_Time'], errors='coerce').dt.strftime('%H:%M')
         df['Date_Str'] = pd.to_datetime(df['Local_Date']).dt.strftime('%m/%d/%Y')
         
         dist_col = [c for c in df.columns if 'Distance' in c and 'mi' in c][0]
@@ -138,11 +123,11 @@ def load_data():
         m_name_col = next((c for c in df.columns if 'Local' in c and 'Month' in c and 'Name' in c), 'Local_Month_Name')
         dx_st_col = next((c for c in df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
         
-        return df, df['Date_Obj'].max(), dist_col, dd_col, l_dx, h_col, y_col, dom_col, m_name_col, dx_st_col
+        return df, df['Date_Obj'].max(), dist_col, dd_col, 'DXer_Latitude', 'DXer_Longitude', 'Station_Lat', 'Station_Long', l_dx, h_col, y_col, dom_col, m_name_col, dx_st_col
     except Exception as e:
-        st.error(f"Link Failure: {e}"); return pd.DataFrame(), None, "Distance", "Distribution", "DX", "Hour", "Year", "Day", "Month", "DXer_State"
+        st.error(f"Link Failure: {e}"); return pd.DataFrame(), None, "Distance", "Distribution", None, None, None, None, "DX", "Hour", "Year", "Day", "Month", "DXer_State"
 
-df, last_date, d_col, dd_col, dx_loc_col, h_col, y_col, dom_col, m_name_col, dx_st_col = load_data()
+df, last_date, d_col, dd_col, dx_lat_f, dx_lon_f, st_lat_f, st_lon_f, dx_loc_col, h_col, y_col, dom_col, m_name_col, dx_st_col = load_data()
 if df.empty: st.stop()
 
 # 3. SIDEBAR NAVIGATION
@@ -183,7 +168,7 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state, '
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULES
+# 5. DASHBOARD OVERVIEW
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
@@ -195,6 +180,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
+# 6. ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -223,10 +209,10 @@ elif selected_page == "ES-CLOUD TRACKER":
         render_df = map_df if current_time == "SHOW ALL" else map_df[(map_df['Time_Str'] <= current_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(current_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))]
         
         layers = [pdk.Layer('HeatmapLayer' if vm == "Es Cloud Location Heatmap" else 'LineLayer', 
-                            data=render_df[['Final_Mid_Lat', 'Final_Mid_Lon']].dropna() if vm == "Es Cloud Location Heatmap" else render_df[['Path_DX_Lat', 'Path_DX_Lon', 'Path_ST_Lat', 'Path_ST_Lon']].dropna(), 
+                            data=render_df[['Final_Mid_Lat', 'Final_Mid_Lon']].dropna() if vm == "Es Cloud Location Heatmap" else render_df[[dx_lat_f, dx_lon_f, st_lat_f, st_lon_f]].dropna(), 
                             get_position='[Final_Mid_Lon, Final_Mid_Lat]' if vm == "Es Cloud Location Heatmap" else None, 
-                            get_source_position='[Path_DX_Lon, Path_DX_Lat]' if vm != "Es Cloud Location Heatmap" else None, 
-                            get_target_position='[Path_ST_Lon, Path_ST_Lat]' if vm != "Es Cloud Location Heatmap" else None, 
+                            get_source_position=f'[{dx_lon_f}, {dx_lat_f}]' if vm != "Es Cloud Location Heatmap" else None, 
+                            get_target_position=f'[{st_lon_f}, {st_lat_f}]' if vm != "Es Cloud Location Heatmap" else None, 
                             radius_pixels=65, intensity=2.0, threshold=0.03, 
                             color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]] if vm == "Es Cloud Location Heatmap" else None, 
                             get_width=1, get_color=[211, 47, 47, 45])]
@@ -238,6 +224,7 @@ elif selected_page == "ES-CLOUD TRACKER":
             if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
+# 7. GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
@@ -304,6 +291,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True); f = s_of.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]} by {f["DXer"]}, {f[dx_loc_col]} on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
                 st.markdown('<div class="stat-header">LOCAL DXER ACTIVITY</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{s_fr["DXer"].nunique()} UNIQUE DXERS</div>', unsafe_allow_html=True); st.markdown('<div class="stat-header">TOP RECEPTION PATHS</div>', unsafe_allow_html=True); st.dataframe(s_fr.groupby('State' if target != 'World' else 'Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True); st.markdown('<div class="stat-header">TOP TRANSMISSION PATHS</div>', unsafe_allow_html=True); st.dataframe(s_of.groupby(dx_st_col if target != 'World' else 'DXer_Country').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True); st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True); t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='L').sort_values('L', ascending=False).head(5); t5['M'] = t5['L']; st.dataframe(t5, column_config={"Frequency":"MHz", "L":st.column_config.NumberColumn("Logs", format="%d"), "M":st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['L'].max() if not t5.empty else 100))}, hide_index=True)
 
+# 8. MODULE 4: TEMPORAL TRENDS
 elif selected_page == "TEMPORAL TRENDS":
     st.header("Temporal Intelligence Suite")
     tv = st.pills("MODULE", options=["Yearly Trends", "Monthly Almanac", "Hourly Analysis"], default="Hourly Analysis")
@@ -376,7 +364,6 @@ elif selected_page == "TEMPORAL TRENDS":
                         intl = s_day[~s_day['Country'].isin(['USA', 'Canada'])]
                         if not intl.empty: st.markdown('<div class="stat-header">TOP INTERNATIONAL COUNTRIES</div>', unsafe_allow_html=True); st.dataframe(intl.groupby('Country').size().reset_index(name='L').sort_values('L', ascending=False).head(3), hide_index=True)
                     else: st.warning("No signal intelligence for selected date.")
-
         st.markdown("#### 📊 SEASONAL DENSITY MATRIX"); st.caption("👈 Percentage of days in each month/year with at least one reported Es log. Red/Yellow intensity indicates high density.")
         m_days = {"May": 31, "June": 30, "July": 31, "August": 31}
         density_data = filt_df[filt_df[m_name_col].isin(list(m_days.keys()))]
@@ -392,7 +379,6 @@ elif selected_page == "TEMPORAL TRENDS":
             fig_dens = px.imshow(density_pivot, text_auto=False, color_continuous_scale='YlOrRd_r', labels=dict(color="% Density"), template="plotly_dark")
             fig_dens.update_traces(text=dens_text.values, texttemplate="%{text}"); fig_dens.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
             st.plotly_chart(fig_dens, use_container_width=True)
-
         st.markdown("#### 🌎 INTERNATIONAL SEASONAL FLOW"); st.caption("👈 Click anywhere on a country's horizontal bar for tactical intelligence.")
         intl_raw = filt_df[~filt_df['Country'].isin(['USA', 'Canada'])].copy()
         if not intl_raw.empty:
@@ -417,11 +403,23 @@ elif selected_page == "TEMPORAL TRENDS":
                     st.markdown(f'<div class="stat-header">TOP 5 HUBS HEARING {c_sel.upper()}</div>', unsafe_allow_html=True)
                     intl_paths = c_df.groupby([dx_st_col]).size().reset_index(name='L').sort_values('L', ascending=False).head(5); intl_paths['M'] = intl_paths['L']
                     st.dataframe(intl_paths, column_config={dx_st_col: "Origin State/Prov", "L": "Logs", "M": st.column_config.ProgressColumn("", format="", min_value=0, max_value=int(intl_paths['L'].max() if not intl_paths.empty else 10))}, hide_index=True, use_container_width=True)
-                    st.markdown('<div class="stat-header">PEAK SIGNAL INTEL</div>', unsafe_allow_html=True)
-                    muf_row = c_df.sort_values('Frequency', ascending=False).iloc[0]
-                    st.markdown(f'<div class="stat-val">{muf_row["Frequency"]} MHz</div><div class="stat-label">MAX MUF: {muf_row["Station"]} caught by {muf_row["DXer"]} ({muf_row[dx_loc_col]}) on {muf_row["Date_Str"]} at {muf_row["Local_Time"]} • {muf_row[d_col]:,.0f} MI</div>', unsafe_allow_html=True)
-                    dist_row = c_df.sort_values(d_col, ascending=False).iloc[0]
-                    st.markdown(f'<div class="stat-val">{dist_row[d_col]:,.0f} MILES</div><div class="stat-label">MAX DISTANCE: {dist_row["Frequency"]} MHz - {dist_row["Station"]} caught by {dist_row["DXer"]} ({dist_row[dx_loc_col]}) on {dist_row["Date_Str"]} at {dist_row["Local_Time"]}</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-header">PEAK SIGNAL INTEL</div>', unsafe_allow_html=True); muf_row = c_df.sort_values('Frequency', ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{muf_row["Frequency"]} MHz</div><div class="stat-label">MAX MUF: {muf_row["Station"]} caught by {muf_row["DXer"]} ({muf_row[dx_loc_col]}) on {muf_row["Date_Str"]} at {muf_row["Local_Time"]} • {muf_row[d_col]:,.0f} MI</div>', unsafe_allow_html=True)
+                    dist_row = c_df.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{dist_row[d_col]:,.0f} MILES</div><div class="stat-label">MAX DISTANCE: {dist_row["Frequency"]} MHz - {dist_row["Station"]} caught by {dist_row["DXer"]} ({dist_row[dx_loc_col]}) on {dist_row["Date_Str"]} at {dist_row["Local_Time"]}</div>', unsafe_allow_html=True)
+
+    elif tv == "Yearly Trends":
+        col_m, col_f = st.columns([3, 1]) if st.session_state.selected_year is not None else st.columns([1, 0.001])
+        with col_m:
+            st.markdown("### SEASONAL VOLUME TRENDS"); y_data = filt_df.groupby(y_col).size().reset_index(name='Logs').sort_values(y_col); fig_y = go.Figure(); fig_y.add_trace(go.Bar(x=y_data[y_col], y=y_data['Logs'], marker_color='#D32F2F', opacity=0.3)); fig_y.add_trace(go.Scatter(x=y_data[y_col], y=y_data['Logs'], mode='markers+lines', marker=dict(size=12, color='#D32F2F', line=dict(width=2, color='white')))); fig_y.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=600, showlegend=False, xaxis=dict(title="Local Year", rangeslider=dict(visible=True))); ev_year = st.plotly_chart(fig_y, use_container_width=True, on_select="rerun", key=f"y_chart_{st.session_state.year_map_key}")
+            if ev_year and "selection" in ev_year and ev_year["selection"]["points"]: st.session_state.selected_year = int(ev_year["selection"]["points"][0]["x"]); st.rerun()
+        if st.session_state.selected_year is not None:
+            with col_f:
+                yr = st.session_state.selected_year; st.markdown(f"### {yr} SEASON INTEL")
+                if st.button("❌ CLEAR YEAR", use_container_width=True): st.session_state.selected_year = None; st.session_state.year_map_key += 1; st.rerun()
+                s_y = filt_df[filt_df[y_col].astype(int) == int(yr)]; st.markdown(f'<div class="stat-header">SEASON VOLUME</div><div class="stat-val">{len(s_y):,} LOGS</div>', unsafe_allow_html=True)
+                if not s_y.empty:
+                    st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True); m_y, y_yr = s_y[m_name_col].value_counts(), s_y[y_col].value_counts()
+                    st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Month</div><div class="stat-val" style="margin-top:0px;">{str(m_y.idxmax()).upper()} ({m_y.max()})</div></div>', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True); f_y = s_y.sort_values(d_col, ascending=False).iloc[0]; st.markdown(f'<div class="stat-val">{f_y[d_col]:,.0f} MILES</div><div class="stat-label">{f_y["Station"]} by {f_y["DXer"]}</div>', unsafe_allow_html=True)
 
 elif selected_page == "FREQUENCY & MUF": st.header("Frequency & MUF Analysis Dashboard"); st.info("Module under construction for Phase 2 Deployment.")
 elif selected_page == "STATION & RDS IQ": st.header("Station & RDS Intelligence Hub"); st.info("Module under construction for Phase 2 Deployment.")
