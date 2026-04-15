@@ -311,6 +311,7 @@ elif selected_page == "TEMPORAL TRENDS":
                     footer.at['TOTAL LOGS', col] = int(d_slice.sum()); footer.at['ACTIVE DAYS', col] = int(active_count); footer.at['AVG/DAY', col] = int(round(d_slice.sum() / active_count if active_count > 0 else 0))
                     footer.at['DAYS >= 100', col] = int((d_slice >= 100).sum()); footer.at['DAYS >= 500', col] = int((d_slice >= 500).sum())
                 final_pivot = pd.concat([pivot, footer]).reset_index().rename(columns={'index': 'DAY/METRIC'})
+                
                 def style_almanac(df):
                     styles = pd.DataFrame('', index=df.index, columns=df.columns); core_y = [c for c in df.columns if str(c).isdigit()]; core_matrix = df.iloc[:31].get(core_y, pd.DataFrame()); max_v = core_matrix.max().max() if not core_matrix.empty else 100
                     for r_idx in df.index:
@@ -320,10 +321,13 @@ elif selected_page == "TEMPORAL TRENDS":
                             if isinstance(label, int) and 1 <= label <= 31 and c in core_y:
                                 if val > 0:
                                     rel = val / max_v; bg = '#FFFF00' if rel > 0.8 else ('#FFA500' if rel > 0.5 else ('#D32F2F' if rel > 0.2 else '#640000'))
-                                    styles.at[r_idx, c] = f'background-color: {bg}; color: {"black" if rel > 0.8 else "white"};'
+                                    # FONT COLOR TWEAK: Black for Yellow/Orange cells, White for Red/Black
+                                    fg = 'black' if rel > 0.5 else 'white'
+                                    styles.at[r_idx, c] = f'background-color: {bg}; color: {fg};'
                             else: styles.at[r_idx, c] = 'background-color: #000000; color: #FFFFFF; font-weight: bold;'
                     return styles
-                st.dataframe(final_pivot.style.apply(style_almanac, axis=None), use_container_width=True, height=1000, hide_index=True)
+                # FULL HEIGHT TWEAK
+                st.dataframe(final_pivot.style.apply(style_almanac, axis=None), use_container_width=True, height=1250, hide_index=True)
             if sel_date:
                 with ci:
                     st.markdown(f"### 📡 TACTICAL REPORT: {sel_date.strftime('%b %d, %Y')}"); s_day = avail_m_df[avail_m_df['Date_Obj'] == sel_date]
@@ -356,34 +360,23 @@ elif selected_page == "TEMPORAL TRENDS":
             fig_dens.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
             st.plotly_chart(fig_dens, use_container_width=True)
 
-        # 3. INTERNATIONAL SEASONAL FLOW (WITH 100% STACKED BARS)
+        # 3. INTERNATIONAL SEASONAL FLOW
         st.markdown("#### 🌎 INTERNATIONAL SEASONAL FLOW")
         intl_raw = filt_df[~filt_df['Country'].isin(['USA', 'Canada'])].copy()
         if not intl_raw.empty:
-            # Force columns to strings to satisfy barnorm='percent' logic
             intl_raw['Country'] = intl_raw['Country'].astype(str)
             intl_raw[m_name_col] = intl_raw[m_name_col].astype(str)
-            
             intl_flow = intl_raw.groupby(['Country', m_name_col]).size().reset_index(name='Logs')
             intl_flow['Logs'] = intl_flow['Logs'].astype(float)
             
             fig_intl = px.bar(
-                intl_flow, 
-                x='Logs', 
-                y='Country', 
-                color=m_name_col, 
-                orientation='h', 
-                template='plotly_dark', 
-                color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00'], 
-                barnorm='percent'
+                intl_flow, x='Logs', y='Country', color=m_name_col, orientation='h',
+                template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00']
             )
+            # NORMALIZATION FIX: Move barnorm inside update_layout
             fig_intl.update_layout(
-                height=500, 
-                barmode='stack', 
-                yaxis={'categoryorder':'total ascending'}, 
-                paper_bgcolor='rgba(0,0,0,0)', 
-                plot_bgcolor='rgba(0,0,0,0)', 
-                xaxis_title="% Monthly Distribution"
+                barnorm='percent', height=500, barmode='stack', yaxis={'categoryorder':'total ascending'},
+                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="% Monthly Distribution"
             )
             ev_intl = st.plotly_chart(fig_intl, use_container_width=True, on_select="rerun", key="intl_flow_chart")
             
