@@ -12,7 +12,7 @@ from google.oauth2 import service_account
 # 1. THEME & UI STYLING
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
 
-# Safe State Initialization
+# Safe State Initialization (Optimized for Blueprint 3.1)
 state_keys = {
     'full_screen': False, 'p_idx': 0, 'playing': False, 'reset_count': 0,
     'selected_state': None, 'selected_tier': None, 'selected_hour': None,
@@ -204,15 +204,13 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 ev_hub = st.plotly_chart(fig_hub, use_container_width=True, on_select="rerun", key=f"dist_hub_{st.session_state.dist_map_key}")
                 if ev_hub and "selection" in ev_hub and ev_hub["selection"]["points"]:
                     nt = ev_hub["selection"]["points"][0]["y"]
-                    if st.session_state.selected_tier != nt:
-                        st.session_state.selected_tier = nt; st.rerun()
+                    if st.session_state.selected_tier != nt: st.session_state.selected_tier = nt; st.rerun()
             pulse_data = geo_df.groupby(['Local_Month', dd_col]).size().reset_index(name='Logs'); fig_pulse = px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', color_discrete_sequence=['#D32F2F', '#FFA500', '#FFFFFF', '#888888'], template="plotly_dark"); st.plotly_chart(fig_pulse, use_container_width=True)
 
         if st.session_state.selected_tier:
             with col_f:
                 tier = st.session_state.selected_tier; st.markdown(f"### {tier.upper()} INTEL")
-                if st.button("❌ CLEAR SELECTION", key="cl_dst", use_container_width=True):
-                    st.session_state.selected_tier = None; st.session_state.dist_map_key += 1; st.rerun()
+                if st.button("❌ CLEAR SELECTION", key="cl_dst", use_container_width=True): st.session_state.selected_tier = None; st.session_state.dist_map_key += 1; st.rerun()
                 s_of = geo_df[geo_df[dd_col] == tier]
                 st.markdown('<div class="stat-header">TOTAL LOGS IN TIER</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
                 st.markdown('<div class="stat-header">LIKELIHOOD SCORE</div>', unsafe_allow_html=True); st.markdown(f'<div class="stat-val">{(s_of["DXer"].nunique() / geo_df["DXer"].nunique()) * 100:.1f}%</div><div class="stat-label">Of DXers have caught this</div>', unsafe_allow_html=True)
@@ -312,17 +310,12 @@ elif selected_page == "TEMPORAL TRENDS":
             fig_intl = px.bar(intl_flow, x='Logs', y='Country', color=m_name_col, orientation='h', template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00'])
             fig_intl.update_layout(height=500, barmode='stack', yaxis={'categoryorder':'total ascending'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
             ev_intl = st.plotly_chart(fig_intl, use_container_width=True, on_select="rerun", key="intl_flow_chart")
-            if ev_intl and ev_intl.get("selection") and ev_intl["selection"].get("points"):
-                st.session_state.selected_intl_country = ev_intl["selection"]["points"][0]["y"]
-            
+            if ev_intl and ev_intl.get("selection") and ev_intl["selection"].get("points"): st.session_state.selected_intl_country = ev_intl["selection"]["points"][0]["y"]
             if st.session_state.selected_intl_country:
-                c_sel = st.session_state.selected_intl_country
-                st.markdown(f"### 📡 {c_sel.upper()} MONTHLY INTEL")
+                c_sel = st.session_state.selected_intl_country; st.markdown(f"### 📡 {c_sel.upper()} MONTHLY INTEL")
                 if st.button(f"❌ CLEAR {c_sel.upper()}"): st.session_state.selected_intl_country = None; st.rerun()
-                c_df = intl_data[intl_data['Country'] == c_sel]
-                st.dataframe(c_df.groupby(m_name_col).agg({'Frequency': 'max', 'Station': 'count', d_col: 'max'}).rename(columns={'Frequency':'Peak MUF', 'Station':'Total Logs', d_col:'Max Miles'}), use_container_width=True)
+                c_df = intl_data[intl_data['Country'] == c_sel]; st.dataframe(c_df.groupby(m_name_col).agg({'Frequency': 'max', 'Station': 'count', d_col: 'max'}).rename(columns={'Frequency':'Peak MUF', 'Station':'Total Logs', d_col:'Max Miles'}), use_container_width=True)
 
-        # EXISTING: TACTICAL DATE FORENSICS
         avail_m_df = filt_df[filt_df[m_name_col] == sel_m_name]
         if not avail_m_df.empty:
             st.markdown("#### 📅 TACTICAL DATE FORENSICS")
@@ -331,16 +324,14 @@ elif selected_page == "TEMPORAL TRENDS":
             with cm:
                 pivot = avail_m_df.pivot_table(index=dom_col, columns=y_col, values='Station', aggfunc='count').fillna(0).astype(int).reindex(range(1, 32), fill_value=0)
                 pivot['TOTAL LOGS'] = pivot.sum(axis=1); pivot['ACTIVE YEARS'] = (pivot.drop(columns=['TOTAL LOGS']) > 0).sum(axis=1); pivot['AVG/YR'] = (pivot['TOTAL LOGS'] / pivot['ACTIVE YEARS']).replace([np.inf, -np.inf], 0).fillna(0).round(0).astype(int)
-                f_rows = ['TOTAL LOGS', 'ACTIVE DAYS', 'AVG/DAY', 'DAYS >= 100', 'DAYS >= 500']
-                footer = pd.DataFrame(index=f_rows, columns=pivot.columns).fillna(0)
+                f_rows = ['TOTAL LOGS', 'ACTIVE DAYS', 'AVG/DAY', 'DAYS >= 100', 'DAYS >= 500']; footer = pd.DataFrame(index=f_rows, columns=pivot.columns).fillna(0)
                 for col in pivot.columns:
                     d_slice = pivot.loc[1:31, col]; active_count = (d_slice > 0).sum()
                     footer.at['TOTAL LOGS', col] = int(d_slice.sum()); footer.at['ACTIVE DAYS', col] = int(active_count); footer.at['AVG/DAY', col] = int(round(d_slice.sum() / active_count if active_count > 0 else 0))
                     footer.at['DAYS >= 100', col] = int((d_slice >= 100).sum()); footer.at['DAYS >= 500', col] = int((d_slice >= 500).sum())
                 final_pivot = pd.concat([pivot, footer]).reset_index().rename(columns={'index': 'DAY/METRIC'})
                 def style_almanac(df):
-                    styles = pd.DataFrame('', index=df.index, columns=df.columns)
-                    core_y = [c for c in df.columns if str(c).isdigit()]; core_matrix = df.iloc[:31].get(core_y, pd.DataFrame()); max_v = core_matrix.max().max() if not core_matrix.empty else 100
+                    styles = pd.DataFrame('', index=df.index, columns=df.columns); core_y = [c for c in df.columns if str(c).isdigit()]; core_matrix = df.iloc[:31].get(core_y, pd.DataFrame()); max_v = core_matrix.max().max() if not core_matrix.empty else 100
                     for r_idx in df.index:
                         label = df.at[r_idx, 'DAY/METRIC']
                         for c in df.columns:
