@@ -143,7 +143,7 @@ f_map = {'Frequency':f_freq, 'DXer':f_dxer, 'Station':f_stat, 'State':f_state, '
 for col, val in f_map.items():
     if val != "All": filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULE 1: DASHBOARD OVERVIEW (LOCKED)
+# 5. DASHBOARD OVERVIEW (LOCKED)
 if selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
     m = st.columns(7)
@@ -155,7 +155,7 @@ if selected_page == "DASHBOARD OVERVIEW":
     m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER (LOCKED)
+# 6. ES-CLOUD TRACKER (LOCKED)
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -190,7 +190,7 @@ elif selected_page == "ES-CLOUD TRACKER":
             if st.session_state.p_idx + conf['step'] < len(times): st.session_state.p_idx += conf['step']; time.sleep(conf['delay']); st.rerun()
             else: st.session_state.playing = False; st.rerun()
 
-# 7. MODULE 3: GEOGRAPHIC ANALYSIS (LOCKED)
+# 7. GEOGRAPHIC ANALYSIS (LOCKED)
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
@@ -231,7 +231,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
             if target == 'World':
                 pm = {'Azores':'Portugal', 'Canary Islands':'Spain', 'Cayman Island':'Cayman Islands', 'Saint Pierre and Miquelon':'France'}; geo_df['MapCountry'] = geo_df['Country'].replace(pm); counts = geo_df.groupby('MapCountry').size().reset_index(name='Logs'); fig = px.choropleth(counts, locations='MapCountry', locationmode="country names", color='Logs', color_continuous_scale=gs, template="plotly_dark"); fig.update_geos(projection_type="equirectangular", visible=True, lataxis_range=[-45, 75], lonaxis_range=[-130, 20])
             else:
-                c_data = geo_df[geo_df['Country'] == target]; cam = {'ON':'Ontario','QC':'Quebec','NS':'Nova Scotia','NB':'New Brunswick','MB':'Manitoba','BC':'British Columbia','PE':'Prince Edward Island','SK':'Saskatchewan','AB':'Alberta','NL':'Newfoundland and Labrador','NU':'Nunavut','NT':'Northwest Territories','YT':'Yukon'} if target == 'Canada' else {}; c_data['MapLoc'] = c_data['State'].map(cam) if target == 'Canada' else c_data['State']; counts = c_data.groupby('MapLoc').size().reset_index(name='Logs').dropna(); fig = px.choropleth(counts, geojson=gj_url, locations='MapLoc', featureidkey=gj_key, locationmode=loc_mode, color='Logs', scope=scope, color_continuous_scale=gs, template="plotly_dark")
+                c_data = geo_df[geo_df['Country'] == target]; cam = {'ON':'Ontario','QC':'Quebec','NS':'Nova Scotia','NB':'New Brunswick','MB':'Manitiba','BC':'British Columbia','PE':'Prince Edward Island','SK':'Saskatchewan','AB':'Alberta','NL':'Newfoundland and Labrador','NU':'Nunavut','NT':'Northwest Territories','YT':'Yukon'} if target == 'Canada' else {}; c_data['MapLoc'] = c_data['State'].map(cam) if target == 'Canada' else c_data['State']; counts = c_data.groupby('MapLoc').size().reset_index(name='Logs').dropna(); fig = px.choropleth(counts, geojson=gj_url, locations='MapLoc', featureidkey=gj_key, locationmode=loc_mode, color='Logs', scope=scope, color_continuous_scale=gs, template="plotly_dark")
                 if target != 'USA': fig.update_geos(fitbounds="locations", visible=True, showsubunits=True, subunitcolor="#333")
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black'), margin={"r":0,"t":0,"l":0,"b":0}, height=750); ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"m_{gv}_{st.session_state.map_key}")
             if ev and ev.get("selection") and ev["selection"].get("points"):
@@ -293,39 +293,8 @@ elif selected_page == "TEMPORAL TRENDS":
         st.markdown("### MONTHLY LOG ALMANAC"); st.caption("Select a month to view seasonal density. Pick a date below to view tactical reports.")
         sel_m_name = st.pills("SELECT MONTH", ["May", "June", "July", "August"], default=st.session_state.almanac_month)
         st.session_state.almanac_month = sel_m_name
-        
-        # FEATURE 1: SEASONAL DENSITY MATRIX (INTERACTIVE PLOTLY HEATMAP)
-        st.markdown("#### 📊 SEASONAL DENSITY MATRIX")
-        m_days = {"May": 31, "June": 30, "July": 31, "August": 31}
-        density_data = filt_df[filt_df[m_name_col].isin(list(m_days.keys()))]
-        if not density_data.empty:
-            density_pivot = density_data.groupby([m_name_col, y_col])['Date_Obj'].nunique().unstack(fill_value=0).astype(float)
-            for m, total_d in m_days.items():
-                if m in density_pivot.index: density_pivot.loc[m] = (density_pivot.loc[m] / total_d) * 100
-            
-            # Calculate Season Total Row and Average Column
-            density_pivot.loc['SEASON TOTAL'] = (density_data.groupby(y_col)['Date_Obj'].nunique() / 123) * 100
-            density_pivot['AVERAGES'] = density_pivot.mean(axis=1)
-            
-            # Draw as Plotly Heatmap to avoid Matplotlib dependency
-            fig_dens = px.imshow(density_pivot, text_auto=".1f", color_continuous_scale='YlOrRd', labels=dict(color="% Density"), template="plotly_dark")
-            fig_dens.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
-            st.plotly_chart(fig_dens, use_container_width=True)
 
-        # FEATURE 2: INTERNATIONAL SEASONAL FLOW
-        st.markdown("#### 🌎 INTERNATIONAL SEASONAL FLOW")
-        intl_data = filt_df[~filt_df['Country'].isin(['USA', 'Canada'])]
-        if not intl_data.empty:
-            intl_flow = intl_data.groupby(['Country', m_name_col]).size().reset_index(name='Logs')
-            fig_intl = px.bar(intl_flow, x='Logs', y='Country', color=m_name_col, orientation='h', template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00'])
-            fig_intl.update_layout(height=500, barmode='stack', yaxis={'categoryorder':'total ascending'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-            ev_intl = st.plotly_chart(fig_intl, use_container_width=True, on_select="rerun", key="intl_flow_chart")
-            if ev_intl and ev_intl.get("selection") and ev_intl["selection"].get("points"): st.session_state.selected_intl_country = ev_intl["selection"]["points"][0]["y"]
-            if st.session_state.selected_intl_country:
-                c_sel = st.session_state.selected_intl_country; st.markdown(f"### 📡 {c_sel.upper()} MONTHLY INTEL")
-                if st.button(f"❌ CLEAR {c_sel.upper()}"): st.session_state.selected_intl_country = None; st.rerun()
-                c_df = intl_data[intl_data['Country'] == c_sel]; st.dataframe(c_df.groupby(m_name_col).agg({'Frequency': 'max', 'Station': 'count', d_col: 'max'}).rename(columns={'Frequency':'Peak MUF', 'Station':'Total Logs', d_col:'Max Miles'}), use_container_width=True)
-
+        # THE STAR OF THE SHOW: TACTICAL DATE FORENSICS (MOVED TO TOP)
         avail_m_df = filt_df[filt_df[m_name_col] == sel_m_name]
         if not avail_m_df.empty:
             st.markdown("#### 📅 TACTICAL DATE FORENSICS")
@@ -340,11 +309,8 @@ elif selected_page == "TEMPORAL TRENDS":
                     footer.at['TOTAL LOGS', col] = int(d_slice.sum()); footer.at['ACTIVE DAYS', col] = int(active_count); footer.at['AVG/DAY', col] = int(round(d_slice.sum() / active_count if active_count > 0 else 0))
                     footer.at['DAYS >= 100', col] = int((d_slice >= 100).sum()); footer.at['DAYS >= 500', col] = int((d_slice >= 500).sum())
                 final_pivot = pd.concat([pivot, footer]).reset_index().rename(columns={'index': 'DAY/METRIC'})
-                
-                # Manual Styling Loop to avoid Matplotlib dependency for coloring
                 def style_almanac(df):
-                    styles = pd.DataFrame('', index=df.index, columns=df.columns)
-                    core_y = [c for c in df.columns if str(c).isdigit()]; core_matrix = df.iloc[:31].get(core_y, pd.DataFrame()); max_v = core_matrix.max().max() if not core_matrix.empty else 100
+                    styles = pd.DataFrame('', index=df.index, columns=df.columns); core_y = [c for c in df.columns if str(c).isdigit()]; core_matrix = df.iloc[:31].get(core_y, pd.DataFrame()); max_v = core_matrix.max().max() if not core_matrix.empty else 100
                     for r_idx in df.index:
                         label = df.at[r_idx, 'DAY/METRIC']
                         for c in df.columns:
@@ -367,6 +333,43 @@ elif selected_page == "TEMPORAL TRENDS":
                         intl = s_day[~s_day['Country'].isin(['USA', 'Canada'])]
                         if not intl.empty: st.markdown('<div class="stat-header">TOP INTERNATIONAL COUNTRIES</div>', unsafe_allow_html=True); st.dataframe(intl.groupby('Country').size().reset_index(name='L').sort_values('L', ascending=False).head(3), hide_index=True)
                     else: st.warning("No signal intelligence for selected date.")
+
+        # FEATURE 1: SEASONAL DENSITY MATRIX
+        st.markdown("#### 📊 SEASONAL DENSITY MATRIX")
+        m_days = {"May": 31, "June": 30, "July": 31, "August": 31}
+        density_data = filt_df[filt_df[m_name_col].isin(list(m_days.keys()))]
+        if not density_data.empty:
+            # Force years to strings to fix the Plotly heatmap axis alignment
+            years_avail = sorted(density_data[y_col].unique())
+            density_pivot = density_data.groupby([m_name_col, y_col])['Date_Obj'].nunique().unstack(fill_value=0).astype(float)
+            # Ensure all available years are represented in columns
+            density_pivot = density_pivot.reindex(columns=years_avail, fill_value=0)
+            
+            for m, total_d in m_days.items():
+                if m in density_pivot.index: density_pivot.loc[m] = (density_pivot.loc[m] / total_d) * 100
+            
+            density_pivot.loc['SEASON TOTAL'] = (density_data.groupby(y_col)['Date_Obj'].nunique() / 123) * 100
+            density_pivot['AVERAGES'] = density_pivot.mean(axis=1)
+            density_pivot.columns = density_pivot.columns.astype(str)
+            
+            fig_dens = px.imshow(density_pivot, text_auto=".1f", color_continuous_scale='YlOrRd', labels=dict(color="% Density"), template="plotly_dark")
+            fig_dens.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
+            st.plotly_chart(fig_dens, use_container_width=True)
+
+        # FEATURE 2: INTERNATIONAL SEASONAL FLOW (NORMALIZED TO 100%)
+        st.markdown("#### 🌎 INTERNATIONAL SEASONAL FLOW")
+        intl_data = filt_df[~filt_df['Country'].isin(['USA', 'Canada'])]
+        if not intl_data.empty:
+            intl_flow = intl_data.groupby(['Country', m_name_col]).size().reset_index(name='Logs')
+            # Added barnorm='percent' to make all country bars even
+            fig_intl = px.bar(intl_flow, x='Logs', y='Country', color=m_name_col, orientation='h', template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00'], barnorm='percent')
+            fig_intl.update_layout(height=500, barmode='stack', yaxis={'categoryorder':'total ascending'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="% Monthly Distribution")
+            ev_intl = st.plotly_chart(fig_intl, use_container_width=True, on_select="rerun", key="intl_flow_chart")
+            if ev_intl and ev_intl.get("selection") and ev_intl["selection"].get("points"): st.session_state.selected_intl_country = ev_intl["selection"]["points"][0]["y"]
+            if st.session_state.selected_intl_country:
+                c_sel = st.session_state.selected_intl_country; st.markdown(f"### 📡 {c_sel.upper()} MONTHLY INTEL")
+                if st.button(f"❌ CLEAR {c_sel.upper()}"): st.session_state.selected_intl_country = None; st.rerun()
+                c_df = intl_data[intl_data['Country'] == c_sel]; st.dataframe(c_df.groupby(m_name_col).agg({'Frequency': 'max', 'Station': 'count', d_col: 'max'}).rename(columns={'Frequency':'Peak MUF', 'Station':'Total Logs', d_col':'Max Miles'}), use_container_width=True)
 
     elif tv == "Yearly Trends":
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_year is not None else st.columns([1, 0.001])
