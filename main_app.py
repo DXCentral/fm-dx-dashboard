@@ -312,6 +312,7 @@ elif selected_page == "TEMPORAL TRENDS":
                     footer.at['TOTAL LOGS', col] = int(d_slice.sum()); footer.at['ACTIVE DAYS', col] = int(active_count); footer.at['AVG/DAY', col] = int(round(d_slice.sum() / active_count if active_count > 0 else 0))
                     footer.at['DAYS >= 100', col] = int((d_slice >= 100).sum()); footer.at['DAYS >= 500', col] = int((d_slice >= 500).sum())
                 final_pivot = pd.concat([pivot, footer]).reset_index().rename(columns={'index': 'DAY/METRIC'})
+                
                 def style_almanac(df):
                     styles = pd.DataFrame('', index=df.index, columns=df.columns); core_y = [c for c in df.columns if str(c).isdigit()]; core_matrix = df.iloc[:31].get(core_y, pd.DataFrame()); max_v = core_matrix.max().max() if not core_matrix.empty else 100
                     for r_idx in df.index:
@@ -367,7 +368,6 @@ elif selected_page == "TEMPORAL TRENDS":
             intl_raw[m_name_col] = intl_raw[m_name_col].astype(str)
             intl_flow = intl_raw.groupby(['Country', m_name_col]).size().reset_index(name='Logs')
             
-            # Flyout Logic Split
             col_intl_m, col_intl_f = st.columns([3, 1]) if st.session_state.selected_intl_country else st.columns([1, 0.001])
             
             with col_intl_m:
@@ -399,11 +399,10 @@ elif selected_page == "TEMPORAL TRENDS":
                     c_df = intl_raw[intl_raw['Country'] == c_sel]
                     total_c_logs = len(c_df)
                     
+                    st.markdown('<div class="stat-header">MONTHLY DISTRIBUTION</div>', unsafe_allow_html=True)
                     c_grp = c_df.groupby(m_name_col).size().reset_index(name='Logs')
                     c_grp['% of Total'] = (c_grp['Logs'] / total_c_logs) * 100
                     c_grp['M'] = c_grp['% of Total']
-                    
-                    st.markdown('<div class="stat-header">MONTHLY DISTRIBUTION</div>', unsafe_allow_html=True)
                     st.dataframe(
                         c_grp, 
                         column_config={
@@ -412,8 +411,20 @@ elif selected_page == "TEMPORAL TRENDS":
                             "% of Total": st.column_config.NumberColumn("%", format="%.1f%%"),
                             "M": st.column_config.ProgressColumn("", format="", min_value=0, max_value=100)
                         },
-                        hide_index=True,
-                        use_container_width=True
+                        hide_index=True, use_container_width=True
+                    )
+                    
+                    st.markdown(f'<div class="stat-header">TOP 5 PATHS (DXER ➔ {c_sel.upper()})</div>', unsafe_allow_html=True)
+                    intl_paths = c_df.groupby([dx_st_col]).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                    intl_paths['M'] = intl_paths['L']
+                    st.dataframe(
+                        intl_paths,
+                        column_config={
+                            dx_st_col: "Origin",
+                            "L": "Logs",
+                            "M": st.column_config.ProgressColumn("", format="", min_value=0, max_value=int(intl_paths['L'].max() if not intl_paths.empty else 10))
+                        },
+                        hide_index=True, use_container_width=True
                     )
                     
                     st.markdown('<div class="stat-header">PEAK SIGNAL INTEL</div>', unsafe_allow_html=True)
