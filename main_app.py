@@ -359,9 +359,9 @@ elif selected_page == "TEMPORAL TRENDS":
             fig_dens.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
             st.plotly_chart(fig_dens, use_container_width=True)
 
-        # 3. INTERNATIONAL SEASONAL FLOW (ALPHABETICAL & ROW-CLICK ENABLED)
+        # 3. INTERNATIONAL SEASONAL FLOW (FLYOUT ARCHITECTURE)
         st.markdown("#### 🌎 INTERNATIONAL SEASONAL FLOW")
-        st.caption("👈 Click anywhere on a country's horizontal bar for tactical intelligence.")
+        st.caption("👈 Click on any country name or month segment for tactical intelligence.")
         intl_raw = filt_df[~filt_df['Country'].isin(['USA', 'Canada'])].copy()
         if not intl_raw.empty:
             intl_raw['Country'] = intl_raw['Country'].astype(str)
@@ -377,9 +377,8 @@ elif selected_page == "TEMPORAL TRENDS":
                     intl_flow, x='Logs', y='Country', color=m_name_col, orientation='h',
                     template='plotly_dark', color_discrete_sequence=['#640000', '#D32F2F', '#FFA500', '#FFFF00']
                 )
-                # FULL ROW CLICKABILITY ENABLED BY barnorm='percent'
                 fig_intl.update_layout(
-                    barnorm='percent', height=500, barmode='stack', clickmode='event+select',
+                    barnorm='percent', height=500, barmode='stack', 
                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="% Monthly Distribution"
                 )
                 ev_intl = st.plotly_chart(fig_intl, use_container_width=True, on_select="rerun", key=f"intl_bar_{st.session_state.intl_map_key}")
