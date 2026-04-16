@@ -1113,6 +1113,12 @@ elif selected_page == "DXER INTELLIGENCE":
             st.markdown(f'<div class="stat-label">Start: {get_avg_date(od.groupby(d_df[y_col]).min())} | Peak: {get_avg_date(od)} | End: {get_avg_date(od.groupby(d_df[y_col]).max())}</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
+            st.markdown('<div class="stat-header">LOGS BY SEASON</div>', unsafe_allow_html=True)
+            dx_yr_counts = d_df.groupby(y_col).size().reset_index(name='Logs').sort_values(y_col)
+            fig_dx_yr = px.bar(dx_yr_counts, x=y_col, y='Logs', template='plotly_dark', color_discrete_sequence=['#D32F2F'])
+            fig_dx_yr.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=250, margin=dict(l=0, r=0, t=10, b=0), xaxis_title=None, yaxis_title=None)
+            st.plotly_chart(fig_dx_yr, use_container_width=True)
+
             st.markdown('<div class="stat-header">DISTANCE DISTRIBUTION</div>', unsafe_allow_html=True)
             dist_breakdown = d_df.groupby(dd_col).size().reset_index(name='Logs').sort_values('Logs', ascending=False)
             dist_breakdown['%'] = (dist_breakdown['Logs'] / len(d_df)) * 100
