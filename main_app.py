@@ -35,6 +35,8 @@ if 'selected_mhz' not in st.session_state:
     st.session_state.selected_mhz = "TUNE..."
 if 'selected_dx_loc' not in st.session_state:
     st.session_state.selected_dx_loc = None
+if 'selected_st_loc' not in st.session_state:
+    st.session_state.selected_st_loc = None
 if 'map_key' not in st.session_state: 
     st.session_state.map_key = 500000
 if 'hour_map_key' not in st.session_state: 
@@ -47,6 +49,8 @@ if 'intl_map_key' not in st.session_state:
     st.session_state.intl_map_key = 900000
 if 'dx_map_key' not in st.session_state:
     st.session_state.dx_map_key = 1000000
+if 'st_map_key' not in st.session_state:
+    st.session_state.st_map_key = 1100000
 if 'almanac_month' not in st.session_state: 
     st.session_state.almanac_month = "June"
 if 'muf_almanac_month' not in st.session_state: 
@@ -191,13 +195,16 @@ def load_data():
         
         df['Station_Discovery_Year'] = df.groupby('Station')[y_col].transform('min')
         df['Freq_Num'] = pd.to_numeric(df['Frequency'], errors='coerce')
+        
+        # Build strict RDS Status indicator
+        df['RDS_Status'] = df[rds_c_field].apply(lambda x: 'No' if pd.isna(x) or str(x).strip().lower() in ['', 'nan', 'none', 'no', '0', 'false'] else 'Yes')
 
-        return df, df['Date_Obj'].max(), dist_col, dd_col, 'DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', l_dx, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c_field
+        return df, df['Date_Obj'].max(), dist_col, dd_col, 'DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', l_dx, l_st, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c_field
     except Exception as e:
         st.error(f"Link Failure: {e}")
-        return pd.DataFrame(), None, "Distance", "Distribution", None, None, None, None, "DX", "Hour", "Year", "Day", "Month", "DXer_State", "RDS"
+        return pd.DataFrame(), None, "Distance", "Distribution", None, None, None, None, "DX", "Station", "Hour", "Year", "Day", "Month", "DXer_State", "RDS"
 
-df, last_date, d_col, dd_col, dx_lat_f, dx_lon_f, st_lat_f, st_lon_f, dx_loc_col, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c = load_data()
+df, last_date, d_col, dd_col, dx_lat_f, dx_lon_f, st_lat_f, st_lon_f, dx_loc_col, st_loc_col, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c = load_data()
 
 if df.empty: 
     st.stop()
@@ -209,7 +216,7 @@ with st.sidebar:
     selected_page = option_menu("DATA MODULES", 
         ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ"], 
         icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin"], 
-        default_index=5)
+        default_index=6)
 
 # 4. GLOBAL FILTERS
 f_freq = "All"; f_dxer = "All"; f_stat = "All"; f_state = "All"; f_ctry = "All"; f_dxco = "All"
@@ -1182,7 +1189,158 @@ elif selected_page == "DXER INTELLIGENCE":
         else:
             st.info("No regional data available for the current filter selection.")
 
-# 11. PLACEHOLDER FOR MODULE 7
+# 11. MODULE 7: STATION & RDS IQ
 elif selected_page == "STATION & RDS IQ": 
-    st.header("Station & RDS Intelligence Hub")
-    st.info("Module under construction for Phase 2 Deployment.")
+    st.markdown("<h1 style='text-align: center; color: #D32F2F;'>STATION & RDS INTELLIGENCE HUB</h1>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    st.markdown("## 📡 TRANSMITTER NETWORK MAP")
+    st.caption("Click any transmitter location cluster to interrogate specific Station intelligence.")
+    
+    st_col_map, st_col_fly = st.columns([3, 1]) if st.session_state.selected_st_loc else st.columns([1, 0.001])
+    
+    with st_col_map:
+        st_map_data = filt_df.groupby([st_loc_col, 'ST_Lat', 'ST_Lon']).agg(
+            Logs=('Station', 'count'),
+            Station_Count=('Station', 'nunique'),
+            Stations=('Station', lambda x: '<br>'.join(x.unique()[:10]) + ('<br>...' if len(x.unique()) > 10 else ''))
+        ).reset_index()
+        
+        fig_st_map = px.scatter_mapbox(
+            st_map_data, lat='ST_Lat', lon='ST_Lon', size='Logs', color='Logs',
+            hover_name=st_loc_col, 
+            hover_data={'ST_Lat':False, 'ST_Lon':False, 'Stations':True, 'Station_Count':True},
+            color_continuous_scale='YlOrRd', zoom=3.5, center=dict(lat=38, lon=-95),
+            size_max=45
+        )
+        fig_st_map.update_layout(mapbox_style="carto-darkmatter", height=800, paper_bgcolor='rgba(0,0,0,0)', margin={"r":0,"t":0,"l":0,"b":0})
+        
+        ev_st = st.plotly_chart(fig_st_map, use_container_width=True, on_select="rerun", key=f"st_map_{st.session_state.st_map_key}")
+        
+        if ev_st and ev_st.get("selection") and ev_st["selection"].get("points"):
+            pt = ev_st["selection"]["points"][0]
+            if "hovertext" in pt:
+                new_loc = pt["hovertext"]
+                if st.session_state.selected_st_loc != new_loc:
+                    st.session_state.selected_st_loc = new_loc
+                    st.rerun()
+
+    if st.session_state.selected_st_loc:
+        with st_col_fly:
+            loc = st.session_state.selected_st_loc
+            st.markdown(f"### 📍 {loc}")
+            
+            if st.button("❌ CLEAR LOCATION", key="cl_st_map", use_container_width=True): 
+                st.session_state.selected_st_loc = None
+                st.session_state.st_map_key += 1
+                st.rerun()
+                
+            loc_df = filt_df[filt_df[st_loc_col] == loc]
+            unique_stations = sorted(loc_df['Station'].unique().tolist())
+            
+            if len(unique_stations) > 1:
+                st.info(f"{len(unique_stations)} Stations found at this location.")
+                target_st = st.selectbox("Select Target Station", options=unique_stations)
+            else:
+                target_st = unique_stations[0]
+                
+            s_df = loc_df[loc_df['Station'] == target_st]
+            
+            if not s_df.empty:
+                hero_freq = s_df['Frequency'].iloc[0]
+                hero_call = s_df['Station'].iloc[0]
+                st.markdown(f"<h2 style='color:#FFFF00; margin-bottom:0px;'>{hero_freq} {hero_call}</h2>", unsafe_allow_html=True)
+                
+                st.markdown('<div class="stat-header">TOTAL LOGS</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-val">{len(s_df):,}</div>', unsafe_allow_html=True)
+                
+                pct_global = (len(s_df) / len(filt_df)) * 100 if len(filt_df) > 0 else 0
+                st.markdown('<div class="stat-header">% OF GLOBAL VOLUME</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-val">{pct_global:.2f}%</div>', unsafe_allow_html=True)
+                
+                st.markdown('<div class="stat-header">UNIQUE DXERS</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-val">{s_df["DXer"].nunique():,}</div>', unsafe_allow_html=True)
+                
+                m_c, y_c = s_df[m_name_col].value_counts(), s_df[y_col].value_counts()
+                st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Month</div><div class="stat-val" style="margin-top:0px;">{str(m_c.idxmax()).upper() if not m_c.empty else "N/A"}</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax() if not y_c.empty else "N/A"}</div></div>', unsafe_allow_html=True)
+                
+                st.markdown('<div class="window-box">', unsafe_allow_html=True)
+                st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window</div>', unsafe_allow_html=True)
+                od = pd.to_datetime(s_df['Local_Date'])
+                st.markdown(f'<div class="stat-label">Start: {get_avg_date(od.groupby(s_df[y_col]).min())} | Peak: {get_avg_date(od)} | End: {get_avg_date(od.groupby(s_df[y_col]).max())}</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+                st.markdown('<div class="stat-header">LOGS BY MONTH</div>', unsafe_allow_html=True)
+                s_mo_counts = s_df.groupby(m_name_col).size().reset_index(name='Logs')
+                fig_s_mo = px.bar(s_mo_counts, x=m_name_col, y='Logs', template='plotly_dark', color_discrete_sequence=['#FFA500'])
+                fig_s_mo.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=200, margin=dict(l=0, r=0, t=10, b=0), xaxis=dict(title=None, type='category'), yaxis_title=None)
+                st.plotly_chart(fig_s_mo, use_container_width=True)
+
+                st.markdown('<div class="stat-header">LOGS BY YEAR</div>', unsafe_allow_html=True)
+                s_yr_counts = s_df.groupby(y_col).size().reset_index(name='Logs').sort_values(y_col)
+                fig_s_yr = px.bar(s_yr_counts, x=y_col, y='Logs', template='plotly_dark', color_discrete_sequence=['#D32F2F'])
+                fig_s_yr.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=200, margin=dict(l=0, r=0, t=10, b=0), xaxis=dict(title=None, type='category'), yaxis_title=None)
+                st.plotly_chart(fig_s_yr, use_container_width=True)
+                
+                st.markdown('<div class="stat-header">TOP 5 RECEPTION PATHS</div>', unsafe_allow_html=True)
+                p_paths = s_df.groupby(dx_st_col).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                st.dataframe(p_paths, column_config={dx_st_col:"DXer State/Prov", "L":"Logs"}, hide_index=True, use_container_width=True)
+                
+                f_r = s_df.sort_values(d_col, ascending=False).iloc[0] if not s_df.empty else None
+                if f_r is not None:
+                    st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{f_r[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-label">Caught by {f_r["DXer"]} ({f_r[dx_loc_col]}) on {f_r["Date_Str"]} at {f_r["Local_Time"]}</div>', unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown("## 📻 RDS CAPTURE FORENSICS")
+    
+    total_logs = len(filt_df)
+    rds_logs = len(filt_df[filt_df['RDS_Status'] == 'Yes'])
+    rds_pct = (rds_logs / total_logs * 100) if total_logs > 0 else 0
+    
+    col_r1, col_r2 = st.columns([1, 3])
+    with col_r1:
+        st.markdown("### OVERALL RDS YIELD")
+        st.metric("Total RDS Decodes", f"{rds_logs:,}")
+        st.markdown(f'<div class="stat-val" style="font-size: 3rem; color: #FFFF00;">{rds_pct:.1f}%</div><div class="stat-label">Of currently filtered logs contain RDS data</div>', unsafe_allow_html=True)
+        
+    with col_r2:
+        st.markdown("### 📈 YOY RDS TREND ANALYSIS")
+        rds_yr = filt_df.groupby([y_col, 'RDS_Status']).size().reset_index(name='Logs')
+        fig_rds_trend = px.bar(rds_yr, x=y_col, y='Logs', color='RDS_Status', template='plotly_dark', color_discrete_map={'Yes': '#00BFFF', 'No': '#444444'})
+        fig_rds_trend.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(type='category'), barmode='stack', yaxis_title="Total Logs", xaxis_title="Season")
+        st.plotly_chart(fig_rds_trend, use_container_width=True)
+
+    r_c1, r_c2, r_c3 = st.columns(3)
+    
+    with r_c1:
+        st.markdown("#### RDS YIELD BY FREQUENCY")
+        freq_rds = filt_df.groupby('Freq_Num')['RDS_Status'].value_counts(normalize=True).unstack().fillna(0)
+        freq_rds['RDS_%'] = freq_rds.get('Yes', 0) * 100
+        freq_rds = freq_rds.reset_index()
+        fig_f_rds = px.line(freq_rds, x='Freq_Num', y='RDS_%', template='plotly_dark', color_discrete_sequence=['#00BFFF'])
+        fig_f_rds.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(title="Frequency (MHz)", range=[87.7, 107.9]), yaxis_title="% with RDS")
+        st.plotly_chart(fig_f_rds, use_container_width=True)
+        
+    with r_c2:
+        st.markdown("#### TOP STATES/PROV BY RDS YIELD")
+        state_rds = filt_df.groupby('State')['RDS_Status'].value_counts().unstack().fillna(0)
+        state_rds['Total'] = state_rds.sum(axis=1)
+        state_rds = state_rds[state_rds['Total'] >= 50] # Filter out statistical noise
+        state_rds['RDS_%'] = (state_rds.get('Yes', 0) / state_rds['Total']) * 100
+        state_rds = state_rds.reset_index().sort_values('RDS_%', ascending=False).head(10)
+        st.dataframe(state_rds[['State', 'Total', 'RDS_%']], column_config={"RDS_%": st.column_config.NumberColumn("% Decoded", format="%.1f%%")}, hide_index=True, use_container_width=True)
+
+    with r_c3:
+        st.markdown("#### TOP COUNTRIES BY RDS YIELD")
+        ctry_rds = filt_df.groupby('Country')['RDS_Status'].value_counts().unstack().fillna(0)
+        ctry_rds['Total'] = ctry_rds.sum(axis=1)
+        ctry_rds['RDS_%'] = (ctry_rds.get('Yes', 0) / ctry_rds['Total']) * 100
+        ctry_rds = ctry_rds.reset_index().sort_values('RDS_%', ascending=False).head(10)
+        st.dataframe(ctry_rds[['Country', 'Total', 'RDS_%']], column_config={"RDS_%": st.column_config.NumberColumn("% Decoded", format="%.1f%%")}, hide_index=True, use_container_width=True)
+        
+    st.markdown("---")
+    st.info("📡 **WTFDA INTEGRATION PENDING:** Ready for Phase 3 linking to the WTFDA Google Sheet to unlock PI Code demographics, Discovery Yields, and Commercial vs Non-Commercial band analytics.")
