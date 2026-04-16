@@ -66,7 +66,12 @@ st.markdown("""
     
     html, body, [class*="st-"] { font-family: 'Oswald', sans-serif !important; background-color: #000000; color: #FFFFFF; font-weight: 300; }
     
-    /* VIRTUAL SDR LCD STYLING (v207.0) */
+    /* MAP CONTAINER HEIGHT REFINEMENT */
+    [data-testid="stDeckGlJsonChart"] {
+        height: 1500px !important;
+    }
+    
+    /* VIRTUAL SDR LCD STYLING */
     .lcd-screen {
         background-color: #a3c2c2;
         color: #002244;
@@ -186,7 +191,6 @@ def load_data():
         
         df['Station_Discovery_Year'] = df.groupby('Station')[y_col].transform('min')
         df['Freq_Num'] = pd.to_numeric(df['Frequency'], errors='coerce')
-        df['MHz_Round'] = df['Freq_Num'].apply(lambda x: round(x, 1) if pd.notna(x) else None)
 
         return df, df['Date_Obj'].max(), dist_col, dd_col, 'DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', l_dx, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c_field
     except Exception as e:
@@ -919,7 +923,7 @@ elif selected_page == "FREQUENCY & MUF":
                         st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]} by {f["DXer"]}, {f[dx_loc_col]} on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
                 else:
                     st.warning("No signal intelligence recorded on this date.")
-        
+
         st.markdown("---")
         r1, r2 = st.columns(2)
         with r1:
@@ -1001,7 +1005,7 @@ elif selected_page == "FREQUENCY & MUF":
             else:
                 st.warning("No signal intelligence recorded on this frequency.")
 
-# 10. MODULE 6: DXER INTELLIGENCE (NEW PHASE 2)
+# 10. MODULE 6: DXER INTELLIGENCE
 elif selected_page == "DXER INTELLIGENCE": 
     st.markdown("<h1 style='text-align: center; color: #D32F2F;'>DXER NETWORK INTELLIGENCE</h1>", unsafe_allow_html=True)
     st.markdown("---")
@@ -1039,13 +1043,13 @@ elif selected_page == "DXER INTELLIGENCE":
         ).reset_index()
         
         # Create an interactive Plotly Mapbox for clustering and click events
-        fig_dx = px.scatter_geo(
+        fig_dx = px.scatter_mapbox(
             dx_map_data, lat='DX_Lat', lon='DX_Lon', size='Logs', color='Logs',
             hover_name=dx_loc_col, 
             hover_data={'DX_Lat':False, 'DX_Lon':False, 'DXers':True, 'DXer_Count':True},
-            template='plotly_dark', color_continuous_scale='YlOrRd', scope='north america'
+            color_continuous_scale='YlOrRd', zoom=4.2, center=dict(lat=38, lon=-95)
         )
-        fig_dx.update_layout(height=800, paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)'))
+        fig_dx.update_layout(mapbox_style="carto-darkmatter", height=800, paper_bgcolor='rgba(0,0,0,0)', margin={"r":0,"t":0,"l":0,"b":0})
         
         ev_dx = st.plotly_chart(fig_dx, use_container_width=True, on_select="rerun", key=f"dx_map_{st.session_state.dx_map_key}")
         
@@ -1082,6 +1086,10 @@ elif selected_page == "DXER INTELLIGENCE":
             st.markdown('<div class="stat-header">TOTAL LOGS</div>', unsafe_allow_html=True)
             st.markdown(f'<div class="stat-val">{len(d_df):,}</div>', unsafe_allow_html=True)
             
+            pct_global = (len(d_df) / len(filt_df)) * 100 if len(filt_df) > 0 else 0
+            st.markdown('<div class="stat-header">% OF GLOBAL VOLUME</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-val">{pct_global:.2f}%</div>', unsafe_allow_html=True)
+            
             st.markdown('<div class="stat-header">UNIQUE STATIONS</div>', unsafe_allow_html=True)
             st.markdown(f'<div class="stat-val">{d_df["Station"].nunique():,}</div>', unsafe_allow_html=True)
             
@@ -1103,6 +1111,15 @@ elif selected_page == "DXER INTELLIGENCE":
             od = pd.to_datetime(d_df['Local_Date'])
             st.markdown(f'<div class="stat-label">Start: {get_avg_date(od.groupby(d_df[y_col]).min())} | Peak: {get_avg_date(od)} | End: {get_avg_date(od.groupby(d_df[y_col]).max())}</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown('<div class="stat-header">DISTANCE DISTRIBUTION</div>', unsafe_allow_html=True)
+            dist_breakdown = d_df.groupby(dd_col).size().reset_index(name='Logs').sort_values('Logs', ascending=False)
+            dist_breakdown['%'] = (dist_breakdown['Logs'] / len(d_df)) * 100
+            st.dataframe(dist_breakdown, column_config={
+                dd_col: "Category",
+                "Logs": "Total Logs",
+                "%": st.column_config.NumberColumn("% of Total", format="%.1f%%")
+            }, hide_index=True, use_container_width=True)
             
             st.markdown('<div class="stat-header">TOP 5 STATES/PROV</div>', unsafe_allow_html=True)
             st.dataframe(d_df.groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
