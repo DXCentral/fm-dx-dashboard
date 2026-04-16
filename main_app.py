@@ -923,7 +923,7 @@ elif selected_page == "FREQUENCY & MUF":
                         st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]} by {f["DXer"]}, {f[dx_loc_col]} on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
                 else:
                     st.warning("No signal intelligence recorded on this date.")
-
+        
         st.markdown("---")
         r1, r2 = st.columns(2)
         with r1:
@@ -1047,7 +1047,8 @@ elif selected_page == "DXER INTELLIGENCE":
             dx_map_data, lat='DX_Lat', lon='DX_Lon', size='Logs', color='Logs',
             hover_name=dx_loc_col, 
             hover_data={'DX_Lat':False, 'DX_Lon':False, 'DXers':True, 'DXer_Count':True},
-            color_continuous_scale='YlOrRd', zoom=4.2, center=dict(lat=38, lon=-95)
+            color_continuous_scale='YlOrRd', zoom=4.2, center=dict(lat=38, lon=-95),
+            size_max=45
         )
         fig_dx.update_layout(mapbox_style="carto-darkmatter", height=800, paper_bgcolor='rgba(0,0,0,0)', margin={"r":0,"t":0,"l":0,"b":0})
         
