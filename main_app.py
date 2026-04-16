@@ -6,6 +6,7 @@ import datetime
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
+import re
 from google.cloud import bigquery
 from google.oauth2 import service_account 
 
@@ -37,6 +38,12 @@ if 'selected_dx_loc' not in st.session_state:
     st.session_state.selected_dx_loc = None
 if 'selected_st_loc' not in st.session_state:
     st.session_state.selected_st_loc = None
+if 'selected_wtfda_state' not in st.session_state:
+    st.session_state.selected_wtfda_state = None
+if 'selected_format' not in st.session_state:
+    st.session_state.selected_format = None
+if 'selected_slogan' not in st.session_state:
+    st.session_state.selected_slogan = None
 if 'map_key' not in st.session_state: 
     st.session_state.map_key = 500000
 if 'hour_map_key' not in st.session_state: 
@@ -51,6 +58,12 @@ if 'dx_map_key' not in st.session_state:
     st.session_state.dx_map_key = 1000000
 if 'st_map_key' not in st.session_state:
     st.session_state.st_map_key = 1100000
+if 'wtfda_map_key' not in st.session_state:
+    st.session_state.wtfda_map_key = 1200000
+if 'format_map_key' not in st.session_state:
+    st.session_state.format_map_key = 1300000
+if 'slogan_map_key' not in st.session_state:
+    st.session_state.slogan_map_key = 1400000
 if 'almanac_month' not in st.session_state: 
     st.session_state.almanac_month = "June"
 if 'muf_almanac_month' not in st.session_state: 
@@ -135,6 +148,21 @@ def update_freq_from_input():
             pass
     st.session_state.freq_direct_entry = ""
 
+def clean_station_slogan(text):
+    if pd.isna(text) or str(text).strip() == '': 
+        return 'Unknown'
+    s = str(text)
+    # Parse generic frequencies out of slogan strings
+    s = re.sub(r'(?<!\d)(8[7-9]|9\d|10[0-7])(\.\d)?(?!\d)', '{FREQ}', s)
+    # Normalize common letter/number prefixes
+    s = re.sub(r'\b[Kk][- ]?\{FREQ\}', 'K-{FREQ}', s)
+    s = re.sub(r'\b[Yy][- ]?\{FREQ\}', 'Y-{FREQ}', s)
+    s = re.sub(r'\b[Qq][- ]?\{FREQ\}', 'Q-{FREQ}', s)
+    s = re.sub(r'\b[Zz][- ]?\{FREQ\}', 'Z-{FREQ}', s)
+    s = re.sub(r'\b[Xx][- ]?\{FREQ\}', 'X-{FREQ}', s)
+    s = re.sub(r'\b(Power|Rock|Magic|Mix|Kiss|Hits|Classic|Oldies|Nash|The Fox|The Bear|The Bull|The Eagle|Bob)[- ]?\{FREQ\}', r'\1 {FREQ}', s, flags=re.IGNORECASE)
+    return s.strip()
+
 # 2. DATA LOADING (GEOMETRIC RECOVERY ENGINE)
 @st.cache_data(ttl=2592000)
 def load_data():
@@ -196,7 +224,6 @@ def load_data():
         df['Station_Discovery_Year'] = df.groupby('Station')[y_col].transform('min')
         df['Freq_Num'] = pd.to_numeric(df['Frequency'], errors='coerce')
         
-        # Build strict RDS Status indicator
         df['RDS_Status'] = df[rds_c_field].apply(lambda x: 'No' if pd.isna(x) or str(x).strip().lower() in ['', 'nan', 'none', 'no', '0', 'false'] else 'Yes')
 
         return df, df['Date_Obj'].max(), dist_col, dd_col, 'DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', l_dx, l_st, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c_field
@@ -220,6 +247,8 @@ def load_wtfda_data():
         df_w['Frequency'] = pd.to_numeric(df_w['Frequency'], errors='coerce')
         df_w['Has_PI'] = df_w['PI Code'].apply(lambda x: 'Yes' if pd.notna(x) and str(x).strip() != '' else 'No')
         df_w['Band_Type'] = df_w['Frequency'].apply(lambda x: 'Non-Commercial (88.1-91.9)' if pd.notna(x) and x < 92.0 else 'Commercial (92.1-107.9)')
+        df_w['Slogan_Clean'] = df_w['Slogan'].apply(clean_station_slogan)
+        df_w['Format'] = df_w['Format'].fillna('Unknown')
         return df_w
     except Exception as e:
         return pd.DataFrame()
@@ -1311,9 +1340,9 @@ elif selected_page == "STATION & RDS IQ":
                     st.markdown(f'<div class="stat-label">Caught by {f_r["DXer"]} ({f_r[dx_loc_col]}) on {f_r["Date_Str"]} at {f_r["Local_Time"]}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("## 📻 RDS CAPTURE FORENSICS")
+    st.markdown("## 📻 INTELLIGENCE DATA HUB")
     
-    rds_view = st.pills("RDS DATA SOURCE", ["Logged RDS Data", "WTFDA RDS Intelligence"], default="Logged RDS Data")
+    rds_view = st.pills("INTELLIGENCE DATA SOURCE", ["Logged RDS Data", "WTFDA RDS Intelligence", "WTFDA Station Intelligence"], default="Logged RDS Data")
     
     if rds_view == "Logged RDS Data":
         total_logs = len(filt_df)
@@ -1342,7 +1371,6 @@ elif selected_page == "STATION & RDS IQ":
         
         with r_c1:
             st.markdown("#### RDS YIELD BY FREQUENCY")
-            # Filter for odd frequencies (e.g. 88.1, 88.3) to remove noise
             odd_freq_df = filt_df[filt_df['Freq_Num'].notna()].copy()
             odd_freq_df = odd_freq_df[odd_freq_df['Freq_Num'].apply(lambda x: int(round(x * 10)) % 2 != 0)]
             
@@ -1357,7 +1385,7 @@ elif selected_page == "STATION & RDS IQ":
             st.markdown("#### TOP STATES/PROV BY RDS YIELD")
             state_rds = filt_df.groupby('State')['RDS_Status'].value_counts().unstack().fillna(0)
             state_rds['Total'] = state_rds.sum(axis=1)
-            state_rds = state_rds[state_rds['Total'] >= 50] # Filter out statistical noise
+            state_rds = state_rds[state_rds['Total'] >= 50]
             state_rds['RDS_%'] = (state_rds.get('Yes', 0) / state_rds['Total']) * 100
             state_rds = state_rds.reset_index().sort_values('RDS_%', ascending=False).head(10)
             st.dataframe(state_rds[['State', 'Total', 'RDS_%']], column_config={"RDS_%": st.column_config.NumberColumn("% Decoded", format="%.1f%%")}, hide_index=True, use_container_width=True)
@@ -1402,7 +1430,6 @@ elif selected_page == "STATION & RDS IQ":
                 
             with r_w2:
                 st.markdown("#### PI CODE ADOPTION BY FREQUENCY")
-                # Filter for odd frequencies strictly for the chart
                 freq_grp = wtfda_df[wtfda_df['Frequency'].apply(lambda x: int(round(x * 10)) % 2 != 0)]
                 f_pi = freq_grp.groupby('Frequency')['Has_PI'].value_counts(normalize=True).unstack().fillna(0)
                 f_pi['PI_%'] = f_pi.get('Yes', 0) * 100
@@ -1412,10 +1439,12 @@ elif selected_page == "STATION & RDS IQ":
                 st.plotly_chart(fig_f_pi, use_container_width=True)
 
             st.markdown("---")
-            r_w3, r_w4 = st.columns([2, 1])
             
-            with r_w3:
+            col_w_m, col_w_f = st.columns([3, 1]) if st.session_state.selected_wtfda_state else st.columns([1, 0.001])
+            
+            with col_w_m:
                 st.markdown("#### US STATE PI CODE ADOPTION MAP")
+                st.caption("Click any state to view its specific PI Code adoption breakdown.")
                 us_w = wtfda_df[wtfda_df['Country'] == 'USA']
                 st_pi = us_w.groupby('S/P')['Has_PI'].value_counts(normalize=True).unstack().fillna(0)
                 st_pi['PI_%'] = st_pi.get('Yes', 0) * 100
@@ -1423,14 +1452,138 @@ elif selected_page == "STATION & RDS IQ":
                 
                 fig_us_pi = px.choropleth(st_pi, locations='S/P', locationmode='USA-states', color='PI_%', scope='usa', color_continuous_scale='YlOrRd', template='plotly_dark')
                 fig_us_pi.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black'), margin={"r":0,"t":0,"l":0,"b":0}, height=500)
-                st.plotly_chart(fig_us_pi, use_container_width=True)
+                ev_us_pi = st.plotly_chart(fig_us_pi, use_container_width=True, on_select="rerun", key=f"wtfda_us_{st.session_state.wtfda_map_key}")
+                
+                if ev_us_pi and ev_us_pi.get("selection") and ev_us_pi["selection"].get("points"):
+                    new_state = ev_us_pi["selection"]["points"][0]["location"]
+                    if st.session_state.selected_wtfda_state != new_state:
+                        st.session_state.selected_wtfda_state = new_state
+                        st.rerun()
 
-            with r_w4:
-                st.markdown("#### NATIONAL PI YIELDS")
-                ctry_grp = wtfda_df.groupby('Country')['Has_PI'].value_counts().unstack().fillna(0)
-                ctry_grp['Total'] = ctry_grp.sum(axis=1)
-                ctry_grp['PI_%'] = (ctry_grp.get('Yes', 0) / ctry_grp['Total']) * 100
-                ctry_grp = ctry_grp.reset_index().sort_values('PI_%', ascending=False)
-                st.dataframe(ctry_grp[['Country', 'Total', 'PI_%']], column_config={"PI_%": st.column_config.NumberColumn("% with PI", format="%.1f%%"), "Total": "Total Stations"}, hide_index=True, use_container_width=True)
+            if st.session_state.selected_wtfda_state:
+                with col_w_f:
+                    ws_sel = st.session_state.selected_wtfda_state
+                    st.markdown(f"### {ws_sel} INTEL")
+                    if st.button("❌ CLEAR SELECTION", key="cl_w_map", use_container_width=True): 
+                        st.session_state.selected_wtfda_state = None
+                        st.session_state.wtfda_map_key += 1
+                        st.rerun()
+                        
+                    s_df_w = wtfda_df[(wtfda_df['Country'] == 'USA') & (wtfda_df['S/P'] == ws_sel)]
+                    st.markdown('<div class="stat-header">TOTAL STATIONS IN STATE</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{len(s_df_w):,}</div>', unsafe_allow_html=True)
+                    
+                    if not s_df_w.empty:
+                        pi_ct = len(s_df_w[s_df_w['Has_PI'] == 'Yes'])
+                        pi_pt = (pi_ct / len(s_df_w)) * 100
+                        st.markdown('<div class="stat-header">PI CODE ADOPTION</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-val" style="color:#FFFF00;">{pi_pt:.1f}%</div><div class="stat-label">({pi_ct} Stations Transmitting)</div>', unsafe_allow_html=True)
+
+            st.markdown("---")
+            st.markdown("#### NATIONAL PI YIELDS")
+            ctry_grp = wtfda_df.groupby('Country')['Has_PI'].value_counts().unstack().fillna(0)
+            ctry_grp['Total'] = ctry_grp.sum(axis=1)
+            ctry_grp['PI_%'] = (ctry_grp.get('Yes', 0) / ctry_grp['Total']) * 100
+            ctry_grp = ctry_grp.reset_index().sort_values('PI_%', ascending=False)
+            st.dataframe(ctry_grp[['Country', 'Total', 'PI_%']], column_config={"PI_%": st.column_config.NumberColumn("% with PI", format="%.1f%%"), "Total": "Total Stations"}, hide_index=True, use_container_width=True)
+            
+    elif rds_view == "WTFDA Station Intelligence":
+        st.markdown("### 📡 WTFDA STATION DATABASE FORENSICS")
+        st.caption("Deep demographic analysis of formats and slogans from the worldwide database.")
+        
+        wtfda_df = load_wtfda_data()
+        if not wtfda_df.empty:
+            
+            st.markdown("### 🎶 FORMAT INTELLIGENCE")
+            col_fm, col_ff = st.columns([3, 1]) if st.session_state.selected_format else st.columns([1, 0.001])
+            with col_fm:
+                top_formats = wtfda_df['Format'].value_counts().reset_index()
+                top_formats.columns = ['Format', 'Stations']
+                top_formats = top_formats[top_formats['Format'] != 'Unknown'].head(25)
+                fig_fmt = px.bar(top_formats, x='Format', y='Stations', template='plotly_dark', color_discrete_sequence=['#D32F2F'])
+                fig_fmt.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title=None, yaxis_title="Total Stations")
+                ev_fmt = st.plotly_chart(fig_fmt, use_container_width=True, on_select="rerun", key=f"fmt_{st.session_state.format_map_key}")
+                
+                if ev_fmt and ev_fmt.get("selection") and ev_fmt["selection"].get("points"):
+                    new_fmt = ev_fmt["selection"]["points"][0]["x"]
+                    if st.session_state.selected_format != new_fmt:
+                        st.session_state.selected_format = new_fmt
+                        st.rerun()
+            
+            if st.session_state.selected_format:
+                with col_ff:
+                    fmt_sel = st.session_state.selected_format
+                    st.markdown(f"### FORMAT: {fmt_sel}")
+                    if st.button("❌ CLEAR SELECTION", key="cl_fmt", use_container_width=True): 
+                        st.session_state.selected_format = None
+                        st.session_state.format_map_key += 1
+                        st.rerun()
+                        
+                    f_df = wtfda_df[wtfda_df['Format'] == fmt_sel]
+                    st.markdown('<div class="stat-header">TOTAL STATIONS</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{len(f_df):,}</div>', unsafe_allow_html=True)
+                    
+                    pct_fmt = (len(f_df) / len(wtfda_df)) * 100
+                    st.markdown('<div class="stat-header">% OF OVERALL DATABASE</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{pct_fmt:.2f}%</div>', unsafe_allow_html=True)
+                    
+                    st.markdown('<div class="stat-header">TOP 5 STATES/PROV</div>', unsafe_allow_html=True)
+                    st.dataframe(f_df.groupby('S/P').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True, use_container_width=True)
+                    
+                    st.markdown('<div class="stat-header">TOP 5 FREQUENCIES</div>', unsafe_allow_html=True)
+                    st.dataframe(f_df.groupby('Frequency').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True, use_container_width=True)
+
+            st.markdown("---")
+            
+            st.markdown("### 🗣️ SLOGAN INTELLIGENCE")
+            st.caption("Normalized to aggregate frequencies (e.g., 'K-95', 'Y-102.5' map to '{FREQ}')")
+            col_sm, col_sf = st.columns([3, 1]) if st.session_state.selected_slogan else st.columns([1, 0.001])
+            with col_sm:
+                top_slogans = wtfda_df['Slogan_Clean'].value_counts().reset_index()
+                top_slogans.columns = ['Slogan', 'Stations']
+                top_slogans = top_slogans[top_slogans['Slogan'] != 'Unknown'].head(25)
+                fig_slog = px.bar(top_slogans, x='Slogan', y='Stations', template='plotly_dark', color_discrete_sequence=['#FFA500'])
+                fig_slog.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title=None, yaxis_title="Total Stations")
+                ev_slog = st.plotly_chart(fig_slog, use_container_width=True, on_select="rerun", key=f"slog_{st.session_state.slogan_map_key}")
+                
+                if ev_slog and ev_slog.get("selection") and ev_slog["selection"].get("points"):
+                    new_slog = ev_slog["selection"]["points"][0]["x"]
+                    if st.session_state.selected_slogan != new_slog:
+                        st.session_state.selected_slogan = new_slog
+                        st.rerun()
+                        
+            if st.session_state.selected_slogan:
+                with col_sf:
+                    slog_sel = st.session_state.selected_slogan
+                    st.markdown(f"### SLOGAN: {slog_sel}")
+                    if st.button("❌ CLEAR SELECTION", key="cl_slog", use_container_width=True): 
+                        st.session_state.selected_slogan = None
+                        st.session_state.slogan_map_key += 1
+                        st.rerun()
+                        
+                    sl_df = wtfda_df[wtfda_df['Slogan_Clean'] == slog_sel]
+                    st.markdown('<div class="stat-header">TOTAL STATIONS</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{len(sl_df):,}</div>', unsafe_allow_html=True)
+                    
+                    pct_slog = (len(sl_df) / len(wtfda_df)) * 100
+                    st.markdown('<div class="stat-header">% OF OVERALL DATABASE</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{pct_slog:.2f}%</div>', unsafe_allow_html=True)
+                    
+                    st.markdown('<div class="stat-header">TOP 5 STATES/PROV</div>', unsafe_allow_html=True)
+                    st.dataframe(sl_df.groupby('S/P').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True, use_container_width=True)
+                    
+                    st.markdown('<div class="stat-header">TOP 5 FORMATS</div>', unsafe_allow_html=True)
+                    st.dataframe(sl_df[sl_df['Format'] != 'Unknown'].groupby('Format').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True, use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("### 🔗 SLOGAN & FORMAT CORRELATION")
+            st.caption("Distribution of programming formats across the Top 10 standardized slogans.")
+            top_10_slogans_list = wtfda_df[wtfda_df['Slogan_Clean'] != 'Unknown']['Slogan_Clean'].value_counts().head(10).index.tolist()
+            corr_df = wtfda_df[(wtfda_df['Slogan_Clean'].isin(top_10_slogans_list)) & (wtfda_df['Format'] != 'Unknown')]
+            
+            fig_corr = px.histogram(corr_df, x='Slogan_Clean', color='Format', template='plotly_dark', barmode='stack', category_orders={"Slogan_Clean": top_10_slogans_list})
+            fig_corr.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="Standardized Slogan", yaxis_title="Station Count")
+            st.plotly_chart(fig_corr, use_container_width=True)
+            
         else:
             st.error("Failed to load WTFDA database. Please verify the Google Sheet URL permissions.")
