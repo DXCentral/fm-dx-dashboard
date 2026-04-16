@@ -224,6 +224,7 @@ def load_data():
         df['Station_Discovery_Year'] = df.groupby('Station')[y_col].transform('min')
         df['Freq_Num'] = pd.to_numeric(df['Frequency'], errors='coerce')
         
+        # Build strict RDS Status indicator
         df['RDS_Status'] = df[rds_c_field].apply(lambda x: 'No' if pd.isna(x) or str(x).strip().lower() in ['', 'nan', 'none', 'no', '0', 'false'] else 'Yes')
 
         return df, df['Date_Obj'].max(), dist_col, dd_col, 'DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', l_dx, l_st, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c_field
@@ -971,7 +972,7 @@ elif selected_page == "FREQUENCY & MUF":
                         f = d_muf.sort_values(d_col, ascending=False).iloc[0]
                         st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
                         st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]} by {f["DXer"]}, {f[dx_loc_col]} on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]}, {f["City"]}, {f["State"]} by {f["DXer"]} ({f[dx_loc_col]}) on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
                 else:
                     st.warning("No signal intelligence recorded on this date.")
         
@@ -1489,7 +1490,7 @@ elif selected_page == "STATION & RDS IQ":
             
     elif rds_view == "WTFDA Station Intelligence":
         st.markdown("### 📡 WTFDA STATION DATABASE FORENSICS")
-        st.caption("Deep demographic analysis of formats and slogans from the worldwide database.")
+        st.caption("The data presented below is sourced from the Worldwide TV-FM DX Association station database at [db.wtfda.org](https://db.wtfda.org/).")
         
         wtfda_df = load_wtfda_data()
         if not wtfda_df.empty:
@@ -1576,13 +1577,20 @@ elif selected_page == "STATION & RDS IQ":
                     st.dataframe(sl_df[sl_df['Format'] != 'Unknown'].groupby('Format').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True, use_container_width=True)
 
             st.markdown("---")
-            st.markdown("### 🔗 SLOGAN & FORMAT CORRELATION")
-            st.caption("Distribution of programming formats across the Top 10 standardized slogans.")
-            top_10_slogans_list = wtfda_df[wtfda_df['Slogan_Clean'] != 'Unknown']['Slogan_Clean'].value_counts().head(10).index.tolist()
-            corr_df = wtfda_df[(wtfda_df['Slogan_Clean'].isin(top_10_slogans_list)) & (wtfda_df['Format'] != 'Unknown')]
+            st.markdown("### 🔗 SLOGAN & FORMAT CORRELATION MATRIX")
+            st.caption("Heatmap showing the intersection density between the Top 15 Slogans and Top 15 Formats.")
             
-            fig_corr = px.histogram(corr_df, x='Slogan_Clean', color='Format', template='plotly_dark', barmode='stack', category_orders={"Slogan_Clean": top_10_slogans_list})
-            fig_corr.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="Standardized Slogan", yaxis_title="Station Count")
+            top_slogans_list = wtfda_df[wtfda_df['Slogan_Clean'] != 'Unknown']['Slogan_Clean'].value_counts().head(15).index.tolist()
+            top_formats_list = wtfda_df[wtfda_df['Format'] != 'Unknown']['Format'].value_counts().head(15).index.tolist()
+            
+            corr_df = wtfda_df[(wtfda_df['Slogan_Clean'].isin(top_slogans_list)) & (wtfda_df['Format'].isin(top_formats_list))]
+            corr_pivot = corr_df.pivot_table(index='Format', columns='Slogan_Clean', aggfunc='size', fill_value=0)
+            
+            # Reorder to match the top lists
+            corr_pivot = corr_pivot.reindex(index=top_formats_list, columns=top_slogans_list)
+            
+            fig_corr = px.imshow(corr_pivot, template='plotly_dark', color_continuous_scale='YlOrRd', text_auto=True, aspect="auto")
+            fig_corr.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="Standardized Slogan", yaxis_title="Programming Format", coloraxis_showscale=False)
             st.plotly_chart(fig_corr, use_container_width=True)
             
         else:
