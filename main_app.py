@@ -1593,7 +1593,7 @@ elif selected_page == "STATION & RDS IQ":
             corr_pivot = corr_pivot.reindex(index=top_formats_list, columns=top_slogans_list).fillna(0)
             corr_pivot = corr_pivot.loc[(corr_pivot.sum(axis=1) > 0)]
             
-            gs_heat = [[0, '#640000'], [0.25, '#D32F2F'], [0.5, '#FF4500'], [0.75, '#FFA500'], [1, '#FFFF00']]
+            gs_heat = [[0.0, '#000000'], [0.01, '#640000'], [0.25, '#D32F2F'], [0.5, '#FF4500'], [0.75, '#FFA500'], [1.0, '#FFFF00']]
             fig_corr = px.imshow(corr_pivot, template='plotly_dark', color_continuous_scale=gs_heat, text_auto=True, aspect="auto")
             fig_corr.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="Standardized Slogan", yaxis_title="Programming Format", coloraxis_showscale=False)
             st.plotly_chart(fig_corr, use_container_width=True)
