@@ -311,7 +311,12 @@ for col, val in f_logic.items():
 
 # 5. MODULE 0: WELCOME
 if selected_page == "WELCOME":
-    st.markdown("<h1 style='text-align: center; color: #D32F2F; font-size: 3rem;'>WELCOME TO SEDAP</h1>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style="text-align: center; padding-bottom: 20px;">
+        <img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="max-width: 600px; width: 100%;">
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #D32F2F; font-size: 3rem; margin-top: -10px;'>WELCOME TO SEDAP</h1>", unsafe_allow_html=True)
     st.markdown("<h3 style='text-align: center; color: #FFA500; margin-top: -15px;'>Sporadic Es Data Analysis Project</h3>", unsafe_allow_html=True)
     st.markdown("---")
     
