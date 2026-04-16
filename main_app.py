@@ -263,14 +263,27 @@ def load_wtfda_data():
 from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
-    selected_page = option_menu("DATA MODULES", 
+    selected_page = option_menu(
+        "DATA MODULES", 
         ["WELCOME", "DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ"], 
         icons=["broadcast", "house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin"], 
-        default_index=0)
+        default_index=0
+    )
 
 # 4. GLOBAL FILTERS (STATIC)
-f_freq = "All"; f_dxer = "All"; f_stat = "All"; f_state = "All"; f_ctry = "All"; f_dxco = "All"
-f_dxst = "All"; f_month = "All"; f_year = "All"; f_day = "All"; f_dist = "All"; f_reg = "All"; f_rds = "All"
+f_freq = "All"
+f_dxer = "All"
+f_stat = "All"
+f_state = "All"
+f_ctry = "All"
+f_dxco = "All"
+f_dxst = "All"
+f_month = "All"
+f_year = "All"
+f_day = "All"
+f_dist = "All"
+f_reg = "All"
+f_rds = "All"
 
 if not st.session_state.full_screen and selected_page != "WELCOME":
     rk = f"v{st.session_state.reset_count}" 
@@ -299,10 +312,19 @@ if not st.session_state.full_screen and selected_page != "WELCOME":
 
 filt_df = df.copy()
 f_logic = {
-    'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_stat, 'State': f_state, 
-    'Country': f_ctry, 'DXer_Country': f_dxco, dx_st_col: f_dxst, 
-    'Local_Month': f_month, 'Local_Year': f_year, 'Month_Day': f_day, 
-    dd_col: f_dist, 'DXer_Region': f_reg, rds_c: f_rds
+    'Frequency': f_freq, 
+    'DXer': f_dxer, 
+    'Station': f_stat, 
+    'State': f_state, 
+    'Country': f_ctry, 
+    'DXer_Country': f_dxco, 
+    dx_st_col: f_dxst, 
+    'Local_Month': f_month, 
+    'Local_Year': f_year, 
+    'Month_Day': f_day, 
+    dd_col: f_dist, 
+    'DXer_Region': f_reg, 
+    rds_c: f_rds
 }
 
 for col, val in f_logic.items():
@@ -448,13 +470,15 @@ elif selected_page == "ES-CLOUD TRACKER":
             display_date = f"{cur_date} | " if cur_date != "N/A" else ""
             pb_txt.write(f"## 🕒 {display_date}{cur_time}")
 
+        # STROBE EFFECT FIX: 30-Minute Persistence Window applied to both Playback and Slider states
         if cur_time == "SHOW ALL":
             render_df = map_df
         else:
+            lookback_time_str = (datetime.datetime.strptime(cur_time, '%H:%M') - datetime.timedelta(minutes=30)).strftime('%H:%M')
             if st.session_state.playing:
-                render_df = map_df[(map_df['Date_Str'] == cur_date) & (map_df['Time_Str'] == cur_time)]
+                render_df = map_df[(map_df['Date_Str'] == cur_date) & (map_df['Time_Str'] <= cur_time) & (map_df['Time_Str'] >= lookback_time_str)]
             else:
-                render_df = map_df[(map_df['Time_Str'] <= cur_time) & (map_df['Time_Str'] >= (datetime.datetime.strptime(cur_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M'))]
+                render_df = map_df[(map_df['Time_Str'] <= cur_time) & (map_df['Time_Str'] >= lookback_time_str)]
         
         layers = [pdk.Layer(
             'HeatmapLayer' if vm == "Es Cloud Location Heatmap" else 'LineLayer', 
@@ -1053,8 +1077,8 @@ elif selected_page == "FREQUENCY & MUF":
                         st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
                         st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
                         st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]}, {f["City"]}, {f["State"]} by {f["DXer"]} ({f[dx_loc_col]}) on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
-                else:
-                    st.warning("No signal intelligence recorded on this date.")
+            else:
+                st.warning("No signal intelligence recorded on this date.")
         
         st.markdown("---")
         r1, r2 = st.columns(2)
