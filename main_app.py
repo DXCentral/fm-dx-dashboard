@@ -1040,7 +1040,7 @@ elif selected_page == "DXER INTELLIGENCE":
     
     with col_map:
         st.markdown("### 📡 RECEIVER NETWORK MAP")
-        st.caption("Click any location cluster to interrogate specific DXer intelligence.")
+        st.caption("Scroll to zoom in/out and drag to pan. Click any location cluster to interrogate specific DXer intelligence.")
         
         # Build the cluster map data
         dx_map_data = filt_df.groupby([dx_loc_col, 'DX_Lat', 'DX_Lon']).agg(
@@ -1059,7 +1059,7 @@ elif selected_page == "DXER INTELLIGENCE":
         )
         fig_dx.update_layout(mapbox_style="carto-darkmatter", height=800, paper_bgcolor='rgba(0,0,0,0)', margin={"r":0,"t":0,"l":0,"b":0})
         
-        ev_dx = st.plotly_chart(fig_dx, use_container_width=True, on_select="rerun", key=f"dx_map_{st.session_state.dx_map_key}")
+        ev_dx = st.plotly_chart(fig_dx, use_container_width=True, on_select="rerun", key=f"dx_map_{st.session_state.dx_map_key}", config={'scrollZoom': True})
         
         if ev_dx and ev_dx.get("selection") and ev_dx["selection"].get("points"):
             pt = ev_dx["selection"]["points"][0]
@@ -1215,7 +1215,7 @@ elif selected_page == "STATION & RDS IQ":
         )
         fig_st_map.update_layout(mapbox_style="carto-darkmatter", height=800, paper_bgcolor='rgba(0,0,0,0)', margin={"r":0,"t":0,"l":0,"b":0})
         
-        ev_st = st.plotly_chart(fig_st_map, use_container_width=True, on_select="rerun", key=f"st_map_{st.session_state.st_map_key}")
+        ev_st = st.plotly_chart(fig_st_map, use_container_width=True, on_select="rerun", key=f"st_map_{st.session_state.st_map_key}", config={'scrollZoom': True})
         
         if ev_st and ev_st.get("selection") and ev_st["selection"].get("points"):
             pt = ev_st["selection"]["points"][0]
@@ -1235,16 +1235,17 @@ elif selected_page == "STATION & RDS IQ":
                 st.session_state.st_map_key += 1
                 st.rerun()
                 
-            loc_df = filt_df[filt_df[st_loc_col] == loc]
-            unique_stations = sorted(loc_df['Station'].unique().tolist())
+            loc_df = filt_df[filt_df[st_loc_col] == loc].copy()
+            loc_df['Station_Display'] = loc_df['Station'].astype(str) + " (" + loc_df['Freq_Num'].astype(str) + " MHz)"
+            unique_stations = sorted(loc_df['Station_Display'].dropna().unique().tolist())
             
             if len(unique_stations) > 1:
-                st.info(f"{len(unique_stations)} Stations found at this location.")
-                target_st = st.selectbox("Select Target Station", options=unique_stations)
+                st.info(f"{loc_df['Station'].nunique()} Stations found at this location.")
+                target_st_display = st.selectbox("Select Target Station", options=unique_stations)
             else:
-                target_st = unique_stations[0]
+                target_st_display = unique_stations[0]
                 
-            s_df = loc_df[loc_df['Station'] == target_st]
+            s_df = loc_df[loc_df['Station_Display'] == target_st_display]
             
             if not s_df.empty:
                 hero_freq = s_df['Frequency'].iloc[0]
@@ -1313,7 +1314,12 @@ elif selected_page == "STATION & RDS IQ":
         with col_r2:
             st.markdown("### 📈 YOY RDS TREND ANALYSIS")
             rds_yr = filt_df.groupby([y_col, 'RDS_Status']).size().reset_index(name='Logs')
-            fig_rds_trend = px.bar(rds_yr, x=y_col, y='Logs', color='RDS_Status', template='plotly_dark', color_discrete_map={'Yes': '#00BFFF', 'No': '#444444'})
+            rds_yr['Total'] = rds_yr.groupby(y_col)['Logs'].transform('sum')
+            rds_yr['Pct'] = (rds_yr['Logs'] / rds_yr['Total'] * 100).round(1)
+            rds_yr['Label'] = rds_yr['Pct'].astype(str) + '%'
+            
+            fig_rds_trend = px.bar(rds_yr, x=y_col, y='Logs', color='RDS_Status', text='Label', template='plotly_dark', color_discrete_map={'Yes': '#00BFFF', 'No': '#444444'})
+            fig_rds_trend.update_traces(textposition='inside', textfont_size=14)
             fig_rds_trend.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(type='category'), barmode='stack', yaxis_title="Total Logs", xaxis_title="Season")
             st.plotly_chart(fig_rds_trend, use_container_width=True)
 
@@ -1321,7 +1327,11 @@ elif selected_page == "STATION & RDS IQ":
         
         with r_c1:
             st.markdown("#### RDS YIELD BY FREQUENCY")
-            freq_rds = filt_df.groupby('Freq_Num')['RDS_Status'].value_counts(normalize=True).unstack().fillna(0)
+            # Filter for odd frequencies (e.g. 88.1, 88.3) to remove noise
+            odd_freq_df = filt_df[filt_df['Freq_Num'].notna()].copy()
+            odd_freq_df = odd_freq_df[odd_freq_df['Freq_Num'].apply(lambda x: int(round(x * 10)) % 2 != 0)]
+            
+            freq_rds = odd_freq_df.groupby('Freq_Num')['RDS_Status'].value_counts(normalize=True).unstack().fillna(0)
             freq_rds['RDS_%'] = freq_rds.get('Yes', 0) * 100
             freq_rds = freq_rds.reset_index()
             fig_f_rds = px.line(freq_rds, x='Freq_Num', y='RDS_%', template='plotly_dark', color_discrete_sequence=['#00BFFF'])
