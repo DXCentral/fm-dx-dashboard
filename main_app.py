@@ -205,22 +205,11 @@ with st.sidebar:
     selected_page = option_menu("DATA MODULES", 
         ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ"], 
         icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin"], 
-        default_index=4)
+        default_index=5)
 
 # 4. GLOBAL FILTERS
-f_freq = "All"
-f_dxer = "All"
-f_stat = "All"
-f_state = "All"
-f_ctry = "All"
-f_dxco = "All"
-f_dxst = "All"
-f_month = "All"
-f_year = "All"
-f_day = "All"
-f_dist = "All"
-f_reg = "All"
-f_rds = "All"
+f_freq = "All"; f_dxer = "All"; f_stat = "All"; f_state = "All"; f_ctry = "All"; f_dxco = "All"
+f_dxst = "All"; f_month = "All"; f_year = "All"; f_day = "All"; f_dist = "All"; f_reg = "All"; f_rds = "All"
 
 if not st.session_state.full_screen:
     rk = f"v{st.session_state.reset_count}" 
@@ -928,9 +917,9 @@ elif selected_page == "FREQUENCY & MUF":
                         st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
                         st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
                         st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]} by {f["DXer"]}, {f[dx_loc_col]} on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
-            else:
-                st.warning("No signal intelligence recorded on this date.")
-        
+                else:
+                    st.warning("No signal intelligence recorded on this date.")
+
         st.markdown("---")
         r1, r2 = st.columns(2)
         with r1:
@@ -1012,11 +1001,98 @@ elif selected_page == "FREQUENCY & MUF":
             else:
                 st.warning("No signal intelligence recorded on this frequency.")
 
-# 10. PLACEHOLDERS FOR MODULE 6 & 7
+# 10. MODULE 6: DXER INTELLIGENCE (NEW PHASE 2)
 elif selected_page == "DXER INTELLIGENCE": 
-    st.header("DXer Network Intelligence Hub")
-    st.info("Module under construction for Phase 2 Deployment.")
+    st.markdown("<h1 style='text-align: center; color: #D32F2F;'>DXER NETWORK INTELLIGENCE</h1>", unsafe_allow_html=True)
+    st.markdown("---")
+
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        st.markdown("### 📈 NETWORK GROWTH (YOY)")
+        st.caption("Tracking the influx of monitoring stations and unique operators over time.")
+        dx_y_stats = filt_df.groupby(y_col).agg(Logs=('Station', 'count'), Unique_DXers=('DXer', 'nunique')).reset_index()
+        fig_growth = px.bar(dx_y_stats, x=y_col, y='Unique_DXers', template='plotly_dark', color_discrete_sequence=['#D32F2F'])
+        fig_growth.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Active DXers", xaxis_title="Season")
+        st.plotly_chart(fig_growth, use_container_width=True)
+
+    with col_g2:
+        st.markdown("### 🏆 SEASON QUALITY INDEX (SQI)")
+        st.caption("Logs per DXer: Normalizing the data to separate 'Observer Bias' from true atmospheric openings.")
+        dx_y_stats['SQI'] = dx_y_stats['Logs'] / dx_y_stats['Unique_DXers']
+        fig_sqi = px.line(dx_y_stats, x=y_col, y='SQI', markers=True, template='plotly_dark', color_discrete_sequence=['#FFFF00'])
+        fig_sqi.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="SQI (Logs per DXer)", xaxis_title="Season")
+        st.plotly_chart(fig_sqi, use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("### 📡 RECEIVER NETWORK HEATMAP")
+    st.caption("Geographic concentration of active monitoring stations across North America.")
     
+    dx_locs = filt_df[['DXer', 'DX_Lat', 'DX_Lon']].drop_duplicates().dropna()
+    if not dx_locs.empty:
+        layer_heat = pdk.Layer(
+            'HeatmapLayer',
+            data=dx_locs,
+            get_position='[DX_Lon, DX_Lat]',
+            radius_pixels=50,
+            intensity=2.0,
+            threshold=0.05,
+            color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]
+        )
+        layer_scatter = pdk.Layer(
+            'ScatterplotLayer',
+            data=dx_locs,
+            get_position='[DX_Lon, DX_Lat]',
+            get_color='[255, 255, 0, 150]',
+            get_radius=20000,
+            pickable=True
+        )
+        st.pydeck_chart(pdk.Deck(
+            map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+            initial_view_state=pdk.ViewState(latitude=38, longitude=-95, zoom=3.5),
+            layers=[layer_heat, layer_scatter]
+        ))
+
+    st.markdown("---")
+    st.markdown("### 🥇 DXER LEADERBOARDS")
+    col_l1, col_l2 = st.columns(2)
+    
+    with col_l1:
+        st.markdown("#### 🌎 GLOBAL VOLUME LEADERS")
+        top_dxers = filt_df.groupby('DXer').size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(50)
+        top_dxers['M'] = top_dxers['Logs']
+        st.dataframe(
+            top_dxers,
+            column_config={
+                "DXer": "Operator",
+                "Logs": st.column_config.NumberColumn("Total Logs", format="%d"),
+                "M": st.column_config.ProgressColumn("Volume Meter", format="%d", min_value=0, max_value=int(top_dxers['Logs'].max() if not top_dxers.empty else 100))
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+
+    with col_l2:
+        st.markdown("#### 📍 REGIONAL LEADERS")
+        reg_list = [r for r in filt_df['DXer_Region'].dropna().unique().tolist() if r != "All"]
+        if reg_list:
+            sel_reg = st.selectbox("Select Region", options=sorted(reg_list))
+            reg_df = filt_df[filt_df['DXer_Region'] == sel_reg]
+            top_reg = reg_df.groupby('DXer').size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(50)
+            top_reg['M'] = top_reg['Logs']
+            st.dataframe(
+                top_reg,
+                column_config={
+                    "DXer": "Operator",
+                    "Logs": st.column_config.NumberColumn("Total Logs", format="%d"),
+                    "M": st.column_config.ProgressColumn("Volume Meter", format="%d", min_value=0, max_value=int(top_reg['Logs'].max() if not top_reg.empty else 100))
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+        else:
+            st.info("No regional data available for the current filter selection.")
+
+# 11. PLACEHOLDER FOR MODULE 7
 elif selected_page == "STATION & RDS IQ": 
     st.header("Station & RDS Intelligence Hub")
     st.info("Module under construction for Phase 2 Deployment.")
