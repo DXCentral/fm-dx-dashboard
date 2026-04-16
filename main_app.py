@@ -1490,7 +1490,7 @@ elif selected_page == "STATION & RDS IQ":
             
     elif rds_view == "WTFDA Station Intelligence":
         st.markdown("### 📡 WTFDA STATION DATABASE FORENSICS")
-        st.caption("The data presented below is sourced from the Worldwide TV-FM DX Association station database at [db.wtfda.org](https://db.wtfda.org/).")
+        st.caption("Deep demographic analysis of formats and slogans from the worldwide database.")
         
         wtfda_df = load_wtfda_data()
         if not wtfda_df.empty:
@@ -1578,18 +1578,23 @@ elif selected_page == "STATION & RDS IQ":
 
             st.markdown("---")
             st.markdown("### 🔗 SLOGAN & FORMAT CORRELATION MATRIX")
-            st.caption("Heatmap showing the intersection density between the Top 15 Slogans and Top 15 Formats.")
+            st.caption("Heatmap showing the intersection density between the Top 15 Slogans and their most frequent Formats.")
             
             top_slogans_list = wtfda_df[wtfda_df['Slogan_Clean'] != 'Unknown']['Slogan_Clean'].value_counts().head(15).index.tolist()
-            top_formats_list = wtfda_df[wtfda_df['Format'] != 'Unknown']['Format'].value_counts().head(15).index.tolist()
             
-            corr_df = wtfda_df[(wtfda_df['Slogan_Clean'].isin(top_slogans_list)) & (wtfda_df['Format'].isin(top_formats_list))]
+            # Extract top formats specifically for these top slogans to avoid empty rows
+            slogans_df = wtfda_df[wtfda_df['Slogan_Clean'].isin(top_slogans_list)]
+            top_formats_list = slogans_df[slogans_df['Format'] != 'Unknown']['Format'].value_counts().head(15).index.tolist()
+            
+            corr_df = slogans_df[slogans_df['Format'].isin(top_formats_list)]
             corr_pivot = corr_df.pivot_table(index='Format', columns='Slogan_Clean', aggfunc='size', fill_value=0)
             
-            # Reorder to match the top lists
-            corr_pivot = corr_pivot.reindex(index=top_formats_list, columns=top_slogans_list)
+            # Reorder to match the top lists and drop any lingering zero-sum rows
+            corr_pivot = corr_pivot.reindex(index=top_formats_list, columns=top_slogans_list).fillna(0)
+            corr_pivot = corr_pivot.loc[(corr_pivot.sum(axis=1) > 0)]
             
-            fig_corr = px.imshow(corr_pivot, template='plotly_dark', color_continuous_scale='YlOrRd', text_auto=True, aspect="auto")
+            gs_heat = [[0, '#640000'], [0.25, '#D32F2F'], [0.5, '#FF4500'], [0.75, '#FFA500'], [1, '#FFFF00']]
+            fig_corr = px.imshow(corr_pivot, template='plotly_dark', color_continuous_scale=gs_heat, text_auto=True, aspect="auto")
             fig_corr.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="Standardized Slogan", yaxis_title="Programming Format", coloraxis_showscale=False)
             st.plotly_chart(fig_corr, use_container_width=True)
             
