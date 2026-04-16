@@ -33,6 +33,8 @@ if 'selected_intl_country' not in st.session_state:
     st.session_state.selected_intl_country = None
 if 'selected_mhz' not in st.session_state: 
     st.session_state.selected_mhz = "TUNE..."
+if 'selected_dx_loc' not in st.session_state:
+    st.session_state.selected_dx_loc = None
 if 'map_key' not in st.session_state: 
     st.session_state.map_key = 500000
 if 'hour_map_key' not in st.session_state: 
@@ -43,6 +45,8 @@ if 'freq_map_key' not in st.session_state:
     st.session_state.freq_map_key = 800000
 if 'intl_map_key' not in st.session_state: 
     st.session_state.intl_map_key = 900000
+if 'dx_map_key' not in st.session_state:
+    st.session_state.dx_map_key = 1000000
 if 'almanac_month' not in st.session_state: 
     st.session_state.almanac_month = "June"
 if 'muf_almanac_month' not in st.session_state: 
@@ -61,11 +65,6 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
     
     html, body, [class*="st-"] { font-family: 'Oswald', sans-serif !important; background-color: #000000; color: #FFFFFF; font-weight: 300; }
-    
-    /* MAP CONTAINER HEIGHT REFINEMENT (v199.0) */
-    [data-testid="stDeckGlJsonChart"] {
-        height: 1500px !important;
-    }
     
     /* VIRTUAL SDR LCD STYLING (v207.0) */
     .lcd-screen {
@@ -187,6 +186,7 @@ def load_data():
         
         df['Station_Discovery_Year'] = df.groupby('Station')[y_col].transform('min')
         df['Freq_Num'] = pd.to_numeric(df['Frequency'], errors='coerce')
+        df['MHz_Round'] = df['Freq_Num'].apply(lambda x: round(x, 1) if pd.notna(x) else None)
 
         return df, df['Date_Obj'].max(), dist_col, dd_col, 'DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', l_dx, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c_field
     except Exception as e:
@@ -919,7 +919,7 @@ elif selected_page == "FREQUENCY & MUF":
                         st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]} by {f["DXer"]}, {f[dx_loc_col]} on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
                 else:
                     st.warning("No signal intelligence recorded on this date.")
-
+        
         st.markdown("---")
         r1, r2 = st.columns(2)
         with r1:
@@ -1024,33 +1024,99 @@ elif selected_page == "DXER INTELLIGENCE":
         st.plotly_chart(fig_sqi, use_container_width=True)
 
     st.markdown("---")
-    st.markdown("### 📡 RECEIVER NETWORK HEATMAP")
-    st.caption("Geographic concentration of active monitoring stations across North America.")
     
-    dx_locs = filt_df[['DXer', 'DX_Lat', 'DX_Lon']].drop_duplicates().dropna()
-    if not dx_locs.empty:
-        layer_heat = pdk.Layer(
-            'HeatmapLayer',
-            data=dx_locs,
-            get_position='[DX_Lon, DX_Lat]',
-            radius_pixels=50,
-            intensity=2.0,
-            threshold=0.05,
-            color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]
+    col_map, col_fly = st.columns([3, 1]) if st.session_state.selected_dx_loc else st.columns([1, 0.001])
+    
+    with col_map:
+        st.markdown("### 📡 RECEIVER NETWORK MAP")
+        st.caption("Click any location cluster to interrogate specific DXer intelligence.")
+        
+        # Build the cluster map data
+        dx_map_data = filt_df.groupby([dx_loc_col, 'DX_Lat', 'DX_Lon']).agg(
+            Logs=('Station', 'count'),
+            DXer_Count=('DXer', 'nunique'),
+            DXers=('DXer', lambda x: '<br>'.join(x.unique()))
+        ).reset_index()
+        
+        # Create an interactive Plotly Mapbox for clustering and click events
+        fig_dx = px.scatter_geo(
+            dx_map_data, lat='DX_Lat', lon='DX_Lon', size='Logs', color='Logs',
+            hover_name=dx_loc_col, 
+            hover_data={'DX_Lat':False, 'DX_Lon':False, 'DXers':True, 'DXer_Count':True},
+            template='plotly_dark', color_continuous_scale='YlOrRd', scope='north america'
         )
-        layer_scatter = pdk.Layer(
-            'ScatterplotLayer',
-            data=dx_locs,
-            get_position='[DX_Lon, DX_Lat]',
-            get_color='[255, 255, 0, 150]',
-            get_radius=20000,
-            pickable=True
-        )
-        st.pydeck_chart(pdk.Deck(
-            map_style='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-            initial_view_state=pdk.ViewState(latitude=38, longitude=-95, zoom=3.5),
-            layers=[layer_heat, layer_scatter]
-        ))
+        fig_dx.update_layout(height=800, paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)'))
+        
+        ev_dx = st.plotly_chart(fig_dx, use_container_width=True, on_select="rerun", key=f"dx_map_{st.session_state.dx_map_key}")
+        
+        if ev_dx and ev_dx.get("selection") and ev_dx["selection"].get("points"):
+            pt = ev_dx["selection"]["points"][0]
+            if "hovertext" in pt:
+                new_loc = pt["hovertext"]
+                if st.session_state.selected_dx_loc != new_loc:
+                    st.session_state.selected_dx_loc = new_loc
+                    st.rerun()
+
+    if st.session_state.selected_dx_loc:
+        with col_fly:
+            loc = st.session_state.selected_dx_loc
+            st.markdown(f"### 📍 {loc}")
+            
+            if st.button("❌ CLEAR LOCATION", key="cl_dx_map", use_container_width=True): 
+                st.session_state.selected_dx_loc = None
+                st.session_state.dx_map_key += 1
+                st.rerun()
+                
+            loc_df = filt_df[filt_df[dx_loc_col] == loc]
+            unique_dxers = sorted(loc_df['DXer'].unique().tolist())
+            
+            if len(unique_dxers) > 1:
+                st.info(f"{len(unique_dxers)} Operators found at this location.")
+                target_dxer = st.selectbox("Select Target Operator", options=unique_dxers)
+            else:
+                target_dxer = unique_dxers[0]
+                st.markdown(f"**Operator:** {target_dxer}")
+                
+            d_df = loc_df[loc_df['DXer'] == target_dxer]
+            
+            st.markdown('<div class="stat-header">TOTAL LOGS</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-val">{len(d_df):,}</div>', unsafe_allow_html=True)
+            
+            st.markdown('<div class="stat-header">UNIQUE STATIONS</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-val">{d_df["Station"].nunique():,}</div>', unsafe_allow_html=True)
+            
+            active_seasons = d_df[y_col].nunique()
+            st.markdown('<div class="stat-header">ACTIVE SEASONS</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-val">{active_seasons}</div>', unsafe_allow_html=True)
+            
+            logs_per_season = len(d_df) / active_seasons if active_seasons > 0 else 0
+            st.markdown('<div class="stat-header">LOGS PER SEASON</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-val">{logs_per_season:.1f}</div>', unsafe_allow_html=True)
+            
+            m_c, y_c = d_df[m_name_col].value_counts(), d_df[y_col].value_counts()
+            st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Month</div><div class="stat-val" style="margin-top:0px;">{str(m_c.idxmax()).upper() if not m_c.empty else "N/A"}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax() if not y_c.empty else "N/A"}</div></div>', unsafe_allow_html=True)
+            
+            st.markdown('<div class="window-box">', unsafe_allow_html=True)
+            st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window</div>', unsafe_allow_html=True)
+            od = pd.to_datetime(d_df['Local_Date'])
+            st.markdown(f'<div class="stat-label">Start: {get_avg_date(od.groupby(d_df[y_col]).min())} | Peak: {get_avg_date(od)} | End: {get_avg_date(od.groupby(d_df[y_col]).max())}</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown('<div class="stat-header">TOP 5 STATES/PROV</div>', unsafe_allow_html=True)
+            st.dataframe(d_df.groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
+            
+            intl_d = d_df[~d_df['Country'].isin(['USA', 'Canada'])]
+            if not intl_d.empty:
+                st.markdown('<div class="stat-header">TOP 3 INTERNATIONAL</div>', unsafe_allow_html=True)
+                st.dataframe(intl_d.groupby('Country').size().reset_index(name='L').sort_values('L', ascending=False).head(3), hide_index=True)
+                
+            f_r = d_df.sort_values(d_col, ascending=False).iloc[0] if not d_df.empty else None
+            if f_r is not None:
+                st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-val">{f_r[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-label">{f_r["Frequency"]} - {f_r["Station"]}, {f_r["City"]}, {f_r["State"]} on {f_r["Date_Str"]} at {f_r["Local_Time"]}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("### 🥇 DXER LEADERBOARDS")
