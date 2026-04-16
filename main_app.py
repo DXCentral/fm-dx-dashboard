@@ -209,6 +209,21 @@ df, last_date, d_col, dd_col, dx_lat_f, dx_lon_f, st_lat_f, st_lon_f, dx_loc_col
 if df.empty: 
     st.stop()
 
+# 2b. DATA LOADING (WTFDA SHEET ENGINE)
+@st.cache_data(ttl=43200) # Syncs directly with Google Sheets every 12 hours
+def load_wtfda_data():
+    try:
+        sheet_url = "https://docs.google.com/spreadsheets/d/13kb09h7vY8X9PnmiwOJf51E6iy4nzPDZ10c4xpzOgdQ/export?format=csv"
+        df_w = pd.read_csv(sheet_url)
+        df_w = df_w[df_w['Country'].isin(['USA', 'CAN', 'MEX', 'Canada', 'Mexico'])]
+        df_w['Country'] = df_w['Country'].replace({'CAN': 'Canada', 'MEX': 'Mexico'})
+        df_w['Frequency'] = pd.to_numeric(df_w['Frequency'], errors='coerce')
+        df_w['Has_PI'] = df_w['PI Code'].apply(lambda x: 'Yes' if pd.notna(x) and str(x).strip() != '' else 'No')
+        df_w['Band_Type'] = df_w['Frequency'].apply(lambda x: 'Non-Commercial (88.1-91.9)' if pd.notna(x) and x < 92.0 else 'Commercial (92.1-107.9)')
+        return df_w
+    except Exception as e:
+        return pd.DataFrame()
+
 # 3. SIDEBAR NAVIGATION
 from streamlit_option_menu import option_menu
 with st.sidebar:
@@ -1355,5 +1370,67 @@ elif selected_page == "STATION & RDS IQ":
             ctry_rds = ctry_rds.reset_index().sort_values('RDS_%', ascending=False).head(10)
             st.dataframe(ctry_rds[['Country', 'Total', 'RDS_%']], column_config={"RDS_%": st.column_config.NumberColumn("% Decoded", format="%.1f%%")}, hide_index=True, use_container_width=True)
             
-    else:
-        st.info("📡 **WTFDA INTEGRATION PENDING:** Ready for Phase 3 linking to the WTFDA Google Sheet to unlock PI Code demographics, Discovery Yields, and Commercial vs Non-Commercial band analytics.")
+    elif rds_view == "WTFDA RDS Intelligence":
+        st.markdown("### 📡 WTFDA STATION DATABASE FORENSICS")
+        st.caption("The data presented below is sourced from the Worldwide TV-FM DX Association station database at [db.wtfda.org](https://db.wtfda.org/).")
+        
+        wtfda_df = load_wtfda_data()
+        if not wtfda_df.empty:
+            total_st = len(wtfda_df)
+            pi_st = len(wtfda_df[wtfda_df['Has_PI'] == 'Yes'])
+            pi_pct = (pi_st / total_st) * 100 if total_st > 0 else 0
+            
+            c_w1, c_w2, c_w3 = st.columns(3)
+            c_w1.metric("Total Stations (US/CA/MX)", f"{total_st:,}")
+            c_w2.metric("Stations Transmitting PI Code", f"{pi_st:,}")
+            c_w3.markdown(f'<div class="stat-header">OVERALL PI ADOPTION</div><div class="stat-val" style="color:#FFFF00; font-size: 2.2rem;">{pi_pct:.1f}%</div>', unsafe_allow_html=True)
+            
+            st.markdown("---")
+            r_w1, r_w2 = st.columns(2)
+            
+            with r_w1:
+                st.markdown("#### COMMERCIAL VS NON-COMMERCIAL PI YIELD")
+                band_grp = wtfda_df.groupby(['Band_Type', 'Has_PI']).size().reset_index(name='Count')
+                band_grp['Total'] = band_grp.groupby('Band_Type')['Count'].transform('sum')
+                band_grp['Pct'] = (band_grp['Count'] / band_grp['Total'] * 100).round(1)
+                band_grp['Label'] = band_grp['Pct'].astype(str) + '%'
+                
+                fig_band = px.bar(band_grp, x='Band_Type', y='Count', color='Has_PI', text='Label', template='plotly_dark', color_discrete_map={'Yes': '#00BFFF', 'No': '#444444'}, barmode='stack')
+                fig_band.update_traces(textposition='inside', textfont_size=14)
+                fig_band.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title=None, yaxis_title="Station Count")
+                st.plotly_chart(fig_band, use_container_width=True)
+                
+            with r_w2:
+                st.markdown("#### PI CODE ADOPTION BY FREQUENCY")
+                # Filter for odd frequencies strictly for the chart
+                freq_grp = wtfda_df[wtfda_df['Frequency'].apply(lambda x: int(round(x * 10)) % 2 != 0)]
+                f_pi = freq_grp.groupby('Frequency')['Has_PI'].value_counts(normalize=True).unstack().fillna(0)
+                f_pi['PI_%'] = f_pi.get('Yes', 0) * 100
+                f_pi = f_pi.reset_index()
+                fig_f_pi = px.line(f_pi, x='Frequency', y='PI_%', template='plotly_dark', color_discrete_sequence=['#00BFFF'])
+                fig_f_pi.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(title="Frequency (MHz)", range=[87.7, 107.9]), yaxis_title="% with PI Code")
+                st.plotly_chart(fig_f_pi, use_container_width=True)
+
+            st.markdown("---")
+            r_w3, r_w4 = st.columns([2, 1])
+            
+            with r_w3:
+                st.markdown("#### US STATE PI CODE ADOPTION MAP")
+                us_w = wtfda_df[wtfda_df['Country'] == 'USA']
+                st_pi = us_w.groupby('S/P')['Has_PI'].value_counts(normalize=True).unstack().fillna(0)
+                st_pi['PI_%'] = st_pi.get('Yes', 0) * 100
+                st_pi = st_pi.reset_index()
+                
+                fig_us_pi = px.choropleth(st_pi, locations='S/P', locationmode='USA-states', color='PI_%', scope='usa', color_continuous_scale='YlOrRd', template='plotly_dark')
+                fig_us_pi.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black'), margin={"r":0,"t":0,"l":0,"b":0}, height=500)
+                st.plotly_chart(fig_us_pi, use_container_width=True)
+
+            with r_w4:
+                st.markdown("#### NATIONAL PI YIELDS")
+                ctry_grp = wtfda_df.groupby('Country')['Has_PI'].value_counts().unstack().fillna(0)
+                ctry_grp['Total'] = ctry_grp.sum(axis=1)
+                ctry_grp['PI_%'] = (ctry_grp.get('Yes', 0) / ctry_grp['Total']) * 100
+                ctry_grp = ctry_grp.reset_index().sort_values('PI_%', ascending=False)
+                st.dataframe(ctry_grp[['Country', 'Total', 'PI_%']], column_config={"PI_%": st.column_config.NumberColumn("% with PI", format="%.1f%%"), "Total": "Total Stations"}, hide_index=True, use_container_width=True)
+        else:
+            st.error("Failed to load WTFDA database. Please verify the Google Sheet URL permissions.")
