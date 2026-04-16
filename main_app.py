@@ -1195,7 +1195,7 @@ elif selected_page == "STATION & RDS IQ":
     st.markdown("---")
     
     st.markdown("## 📡 TRANSMITTER NETWORK MAP")
-    st.caption("Click any transmitter location cluster to interrogate specific Station intelligence.")
+    st.caption("Scroll to zoom in/out and drag to pan across the transmitter network. Click any transmitter location cluster to interrogate specific Station intelligence.")
     
     st_col_map, st_col_fly = st.columns([3, 1]) if st.session_state.selected_st_loc else st.columns([1, 0.001])
     
@@ -1210,7 +1210,7 @@ elif selected_page == "STATION & RDS IQ":
             st_map_data, lat='ST_Lat', lon='ST_Lon', size='Logs', color='Logs',
             hover_name=st_loc_col, 
             hover_data={'ST_Lat':False, 'ST_Lon':False, 'Stations':True, 'Station_Count':True},
-            color_continuous_scale='YlOrRd', zoom=3.5, center=dict(lat=38, lon=-95),
+            color_continuous_scale='YlOrRd', zoom=4.0, center=dict(lat=38, lon=-95),
             size_max=45
         )
         fig_st_map.update_layout(mapbox_style="carto-darkmatter", height=800, paper_bgcolor='rgba(0,0,0,0)', margin={"r":0,"t":0,"l":0,"b":0})
@@ -1297,50 +1297,53 @@ elif selected_page == "STATION & RDS IQ":
     st.markdown("---")
     st.markdown("## 📻 RDS CAPTURE FORENSICS")
     
-    total_logs = len(filt_df)
-    rds_logs = len(filt_df[filt_df['RDS_Status'] == 'Yes'])
-    rds_pct = (rds_logs / total_logs * 100) if total_logs > 0 else 0
+    rds_view = st.pills("RDS DATA SOURCE", ["Logged RDS Data", "WTFDA RDS Intelligence"], default="Logged RDS Data")
     
-    col_r1, col_r2 = st.columns([1, 3])
-    with col_r1:
-        st.markdown("### OVERALL RDS YIELD")
-        st.metric("Total RDS Decodes", f"{rds_logs:,}")
-        st.markdown(f'<div class="stat-val" style="font-size: 3rem; color: #FFFF00;">{rds_pct:.1f}%</div><div class="stat-label">Of currently filtered logs contain RDS data</div>', unsafe_allow_html=True)
+    if rds_view == "Logged RDS Data":
+        total_logs = len(filt_df)
+        rds_logs = len(filt_df[filt_df['RDS_Status'] == 'Yes'])
+        rds_pct = (rds_logs / total_logs * 100) if total_logs > 0 else 0
         
-    with col_r2:
-        st.markdown("### 📈 YOY RDS TREND ANALYSIS")
-        rds_yr = filt_df.groupby([y_col, 'RDS_Status']).size().reset_index(name='Logs')
-        fig_rds_trend = px.bar(rds_yr, x=y_col, y='Logs', color='RDS_Status', template='plotly_dark', color_discrete_map={'Yes': '#00BFFF', 'No': '#444444'})
-        fig_rds_trend.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(type='category'), barmode='stack', yaxis_title="Total Logs", xaxis_title="Season")
-        st.plotly_chart(fig_rds_trend, use_container_width=True)
+        col_r1, col_r2 = st.columns([1, 3])
+        with col_r1:
+            st.markdown("### OVERALL RDS YIELD")
+            st.metric("Total RDS Decodes", f"{rds_logs:,}")
+            st.markdown(f'<div class="stat-val" style="font-size: 3rem; color: #FFFF00;">{rds_pct:.1f}%</div><div class="stat-label">Of currently filtered logs contain RDS data</div>', unsafe_allow_html=True)
+            
+        with col_r2:
+            st.markdown("### 📈 YOY RDS TREND ANALYSIS")
+            rds_yr = filt_df.groupby([y_col, 'RDS_Status']).size().reset_index(name='Logs')
+            fig_rds_trend = px.bar(rds_yr, x=y_col, y='Logs', color='RDS_Status', template='plotly_dark', color_discrete_map={'Yes': '#00BFFF', 'No': '#444444'})
+            fig_rds_trend.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(type='category'), barmode='stack', yaxis_title="Total Logs", xaxis_title="Season")
+            st.plotly_chart(fig_rds_trend, use_container_width=True)
 
-    r_c1, r_c2, r_c3 = st.columns(3)
-    
-    with r_c1:
-        st.markdown("#### RDS YIELD BY FREQUENCY")
-        freq_rds = filt_df.groupby('Freq_Num')['RDS_Status'].value_counts(normalize=True).unstack().fillna(0)
-        freq_rds['RDS_%'] = freq_rds.get('Yes', 0) * 100
-        freq_rds = freq_rds.reset_index()
-        fig_f_rds = px.line(freq_rds, x='Freq_Num', y='RDS_%', template='plotly_dark', color_discrete_sequence=['#00BFFF'])
-        fig_f_rds.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(title="Frequency (MHz)", range=[87.7, 107.9]), yaxis_title="% with RDS")
-        st.plotly_chart(fig_f_rds, use_container_width=True)
+        r_c1, r_c2, r_c3 = st.columns(3)
         
-    with r_c2:
-        st.markdown("#### TOP STATES/PROV BY RDS YIELD")
-        state_rds = filt_df.groupby('State')['RDS_Status'].value_counts().unstack().fillna(0)
-        state_rds['Total'] = state_rds.sum(axis=1)
-        state_rds = state_rds[state_rds['Total'] >= 50] # Filter out statistical noise
-        state_rds['RDS_%'] = (state_rds.get('Yes', 0) / state_rds['Total']) * 100
-        state_rds = state_rds.reset_index().sort_values('RDS_%', ascending=False).head(10)
-        st.dataframe(state_rds[['State', 'Total', 'RDS_%']], column_config={"RDS_%": st.column_config.NumberColumn("% Decoded", format="%.1f%%")}, hide_index=True, use_container_width=True)
+        with r_c1:
+            st.markdown("#### RDS YIELD BY FREQUENCY")
+            freq_rds = filt_df.groupby('Freq_Num')['RDS_Status'].value_counts(normalize=True).unstack().fillna(0)
+            freq_rds['RDS_%'] = freq_rds.get('Yes', 0) * 100
+            freq_rds = freq_rds.reset_index()
+            fig_f_rds = px.line(freq_rds, x='Freq_Num', y='RDS_%', template='plotly_dark', color_discrete_sequence=['#00BFFF'])
+            fig_f_rds.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(title="Frequency (MHz)", range=[87.7, 107.9]), yaxis_title="% with RDS")
+            st.plotly_chart(fig_f_rds, use_container_width=True)
+            
+        with r_c2:
+            st.markdown("#### TOP STATES/PROV BY RDS YIELD")
+            state_rds = filt_df.groupby('State')['RDS_Status'].value_counts().unstack().fillna(0)
+            state_rds['Total'] = state_rds.sum(axis=1)
+            state_rds = state_rds[state_rds['Total'] >= 50] # Filter out statistical noise
+            state_rds['RDS_%'] = (state_rds.get('Yes', 0) / state_rds['Total']) * 100
+            state_rds = state_rds.reset_index().sort_values('RDS_%', ascending=False).head(10)
+            st.dataframe(state_rds[['State', 'Total', 'RDS_%']], column_config={"RDS_%": st.column_config.NumberColumn("% Decoded", format="%.1f%%")}, hide_index=True, use_container_width=True)
 
-    with r_c3:
-        st.markdown("#### TOP COUNTRIES BY RDS YIELD")
-        ctry_rds = filt_df.groupby('Country')['RDS_Status'].value_counts().unstack().fillna(0)
-        ctry_rds['Total'] = ctry_rds.sum(axis=1)
-        ctry_rds['RDS_%'] = (ctry_rds.get('Yes', 0) / ctry_rds['Total']) * 100
-        ctry_rds = ctry_rds.reset_index().sort_values('RDS_%', ascending=False).head(10)
-        st.dataframe(ctry_rds[['Country', 'Total', 'RDS_%']], column_config={"RDS_%": st.column_config.NumberColumn("% Decoded", format="%.1f%%")}, hide_index=True, use_container_width=True)
-        
-    st.markdown("---")
-    st.info("📡 **WTFDA INTEGRATION PENDING:** Ready for Phase 3 linking to the WTFDA Google Sheet to unlock PI Code demographics, Discovery Yields, and Commercial vs Non-Commercial band analytics.")
+        with r_c3:
+            st.markdown("#### TOP COUNTRIES BY RDS YIELD")
+            ctry_rds = filt_df.groupby('Country')['RDS_Status'].value_counts().unstack().fillna(0)
+            ctry_rds['Total'] = ctry_rds.sum(axis=1)
+            ctry_rds['RDS_%'] = (ctry_rds.get('Yes', 0) / ctry_rds['Total']) * 100
+            ctry_rds = ctry_rds.reset_index().sort_values('RDS_%', ascending=False).head(10)
+            st.dataframe(ctry_rds[['Country', 'Total', 'RDS_%']], column_config={"RDS_%": st.column_config.NumberColumn("% Decoded", format="%.1f%%")}, hide_index=True, use_container_width=True)
+            
+    else:
+        st.info("📡 **WTFDA INTEGRATION PENDING:** Ready for Phase 3 linking to the WTFDA Google Sheet to unlock PI Code demographics, Discovery Yields, and Commercial vs Non-Commercial band analytics.")
