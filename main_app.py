@@ -930,7 +930,7 @@ elif selected_page == "FREQUENCY & MUF":
             st.markdown("#### 📊 GLOBAL BAND YIELD (LOGS PER FREQUENCY)")
             overall_freq = filt_df.groupby('Freq_Num').size().reset_index(name='Logs').sort_values('Freq_Num')
             fig_overall = px.bar(overall_freq, x='Freq_Num', y='Logs', template='plotly_dark', color_discrete_sequence=['#D32F2F'])
-            fig_overall.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="Frequency (MHz)", yaxis_title="Total Logs")
+            fig_overall.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(title="Frequency (MHz)", range=[87.7, 107.9]), yaxis_title="Total Logs")
             st.plotly_chart(fig_overall, use_container_width=True)
             
         with r2:
@@ -1116,7 +1116,7 @@ elif selected_page == "DXER INTELLIGENCE":
             st.markdown('<div class="stat-header">LOGS BY SEASON</div>', unsafe_allow_html=True)
             dx_yr_counts = d_df.groupby(y_col).size().reset_index(name='Logs').sort_values(y_col)
             fig_dx_yr = px.bar(dx_yr_counts, x=y_col, y='Logs', template='plotly_dark', color_discrete_sequence=['#D32F2F'])
-            fig_dx_yr.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=250, margin=dict(l=0, r=0, t=10, b=0), xaxis_title=None, yaxis_title=None)
+            fig_dx_yr.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=250, margin=dict(l=0, r=0, t=10, b=0), xaxis=dict(title=None, type='category'), yaxis_title=None)
             st.plotly_chart(fig_dx_yr, use_container_width=True)
 
             st.markdown('<div class="stat-header">DISTANCE DISTRIBUTION</div>', unsafe_allow_html=True)
