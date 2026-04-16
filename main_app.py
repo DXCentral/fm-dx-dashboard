@@ -88,6 +88,9 @@ st.markdown("""
         height: 1500px !important;
     }
     
+    /* HIDE SIDEBAR COLLAPSE ARROW */
+    [data-testid="collapsedControl"] { display: none !important; }
+    
     /* VIRTUAL SDR LCD STYLING */
     .lcd-screen {
         background-color: #a3c2c2;
@@ -123,6 +126,8 @@ st.markdown("""
     .stat-val { font-size: 1.3rem; color: #FFF; font-weight: 300; margin-top: 5px;}
     .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 8px; line-height: 1.2; }
     .window-box { border-left: 2px solid #D32F2F; padding-left: 10px; margin-bottom: 15px; }
+    .welcome-text { font-size: 1.2rem; line-height: 1.6; color: #DDDDDD; font-weight: 300; }
+    .welcome-highlight { color: #FFA500; font-weight: 400; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -259,35 +264,38 @@ from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     selected_page = option_menu("DATA MODULES", 
-        ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ"], 
-        icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin"], 
-        default_index=6)
+        ["WELCOME", "DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ"], 
+        icons=["broadcast", "house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin"], 
+        default_index=0)
 
-# 4. GLOBAL FILTERS
+# 4. GLOBAL FILTERS (STATIC)
 f_freq = "All"; f_dxer = "All"; f_stat = "All"; f_state = "All"; f_ctry = "All"; f_dxco = "All"
 f_dxst = "All"; f_month = "All"; f_year = "All"; f_day = "All"; f_dist = "All"; f_reg = "All"; f_rds = "All"
 
-if not st.session_state.full_screen:
+if not st.session_state.full_screen and selected_page != "WELCOME":
     rk = f"v{st.session_state.reset_count}" 
-    with st.expander(label="GLOBAL FILTERS", expanded=True):
-        r1, r2, r3 = st.columns(5), st.columns(5), st.columns(3)
-        f_freq = r1[0].selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key=f"f1_{rk}")
-        f_dxer = r1[1].selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().astype(str).tolist()), key=f"f2_{rk}")
-        f_stat = r1[2].selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key=f"f3_{rk}")
-        f_state = r1[3].selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key=f"f4_{rk}")
-        f_ctry = r1[4].selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key=f"f5_{rk}")
-        f_dxco = r2[0].selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().astype(str).tolist()), key=f"f6_{rk}")
-        f_dxst = r2[1].selectbox("DXer State/Prov", ["All"] + sorted(df[dx_st_col].dropna().unique().astype(str).tolist()), key=f"f7_{rk}")
-        f_month = r2[2].selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key=f"f8_{rk}")
-        f_year = r2[3].selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key=f"f9_{rk}")
-        f_day = r2[4].selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key=f"f10_{rk}")
-        f_dist = r3[0].selectbox("Distance Dist.", ["All"] + sorted(df[dd_col].dropna().unique().astype(str).tolist()), key=f"f11_{rk}")
-        f_reg = r3[1].selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key=f"f12_{rk}")
-        f_rds = r3[2].selectbox("RDS Decode?", ["All"] + (sorted(df[rds_c].dropna().unique().astype(str).tolist()) if rds_c in df.columns else []), key=f"f13_{rk}")
-        
-        if st.button("RESET ALL FILTERS"): 
-            st.session_state.reset_count += 1
-            st.rerun()
+    st.markdown("<h4 style='color: #D32F2F; margin-bottom: 0px;'>GLOBAL FILTERS</h4>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin-top: 5px; margin-bottom: 15px; border-color: #333;'>", unsafe_allow_html=True)
+    
+    r1, r2, r3 = st.columns(5), st.columns(5), st.columns(3)
+    f_freq = r1[0].selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key=f"f1_{rk}")
+    f_dxer = r1[1].selectbox("DXer Name", ["All"] + sorted(df['DXer'].dropna().unique().astype(str).tolist()), key=f"f2_{rk}")
+    f_stat = r1[2].selectbox("Station", ["All"] + sorted(df['Station'].dropna().unique().astype(str).tolist()), key=f"f3_{rk}")
+    f_state = r1[3].selectbox("State", ["All"] + sorted(df['State'].dropna().unique().astype(str).tolist()), key=f"f4_{rk}")
+    f_ctry = r1[4].selectbox("Country", ["All"] + sorted(df['Country'].dropna().unique().astype(str).tolist()), key=f"f5_{rk}")
+    f_dxco = r2[0].selectbox("DXer Country", ["All"] + sorted(df['DXer_Country'].dropna().unique().astype(str).tolist()), key=f"f6_{rk}")
+    f_dxst = r2[1].selectbox("DXer State/Prov", ["All"] + sorted(df[dx_st_col].dropna().unique().astype(str).tolist()), key=f"f7_{rk}")
+    f_month = r2[2].selectbox("Local Month", ["All"] + sorted(df['Local_Month'].dropna().unique().astype(str).tolist()), key=f"f8_{rk}")
+    f_year = r2[3].selectbox("Local Year", ["All"] + sorted(df['Local_Year'].dropna().unique().astype(str).tolist()), key=f"f9_{rk}")
+    f_day = r2[4].selectbox("Month Day", ["All"] + sorted(df['Month_Day'].dropna().unique().astype(str).tolist()), key=f"f10_{rk}")
+    f_dist = r3[0].selectbox("Distance Dist.", ["All"] + sorted(df[dd_col].dropna().unique().astype(str).tolist()), key=f"f11_{rk}")
+    f_reg = r3[1].selectbox("DXer Region", ["All"] + sorted(df['DXer_Region'].dropna().unique().astype(str).tolist()), key=f"f12_{rk}")
+    f_rds = r3[2].selectbox("RDS Decode?", ["All"] + (sorted(df[rds_c].dropna().unique().astype(str).tolist()) if rds_c in df.columns else []), key=f"f13_{rk}")
+    
+    if st.button("RESET ALL FILTERS"): 
+        st.session_state.reset_count += 1
+        st.rerun()
+    st.markdown("<br>", unsafe_allow_html=True)
 
 filt_df = df.copy()
 f_logic = {
@@ -301,21 +309,88 @@ for col, val in f_logic.items():
     if val != "All" and col in filt_df.columns: 
         filt_df = filt_df[filt_df[col].astype(str) == str(val)]
 
-# 5. MODULE 1: DASHBOARD OVERVIEW
-if selected_page == "DASHBOARD OVERVIEW":
+# 5. MODULE 0: WELCOME
+if selected_page == "WELCOME":
+    st.markdown("<h1 style='text-align: center; color: #D32F2F; font-size: 3rem;'>WELCOME TO SEDAP</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; color: #FFA500; margin-top: -15px;'>Sporadic Es Data Analysis Project</h3>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    col_text, col_info = st.columns([2.5, 1])
+    
+    with col_text:
+        st.markdown("""
+        <div class="welcome-text">
+        For years, analysis of Sporadic Es receptions on the FM band has been largely a siloed effort.<br><br>
+        
+        Historically, this has meant DXers analyzing the data of receptions from their specific location, comparing season-over-season and gauging quality of seasons based on total logs or number of events. What if some locations are just more prone to Sporadic Es than others? What if some DXers just have better setups or have more time to DX?<br><br>
+        
+        <span class="welcome-highlight">Clearly, we need more data.</span><br><br>
+        
+        Further, we have seen over the past decade or two an explosion in the amount of resources available to DXers. Sites such as FMList.org and the Worldwide TV-FM DX Association (WTFDA)'s WLogger that provide real-time maps of receptions and sometimes email alerts for possible Sporadic Es propagation in a specific location. Sites such as Rabbitears and the RDS autologging maps that allow for unattended RDS decode logging of receptions through always-on receivers.<br><br>
+        
+        We haven't even mentioned the explosion of the use of Software-Defined Radio (SDR) technology that provides DXers with not only visual representations of their FM band, but the ability to record a portion or even the entire FM band for later review and logging of every single station received during an opening.<br><br>
+        
+        In recent years, we have seen a vast expansion of online FM DX receivers through sources such as FMDX.org that allow DXers to hear "first hand" the FM band in various locations all around the world and even spot openings using other locations as a beacon.<br><br>
+        
+        So, it is in that spirit that here at DX Central we decided it was time to collect all of that newly created data from the tens of thousands of FM Sporadic Es logs over the past decade or so.<br><br>
+        
+        We decided to start with North America, as that was the data that was most easily digestible and available to us from our partners at FMlist.org.<br><br>
+        
+        To our knowledge, this represents the first widespread and collective analysis of Sporadic Es logs from a large enough sample size to be able to spot trends and provide what we hope is a directionally accurate analysis.<br><br>
+        
+        We hope it helps provide insight for you not only into the historical performance of Sporadic Es seasons, but show you what is possible from your location, or in any given season. We can't predict Sporadic Es (yet!) but maybe we can at least shine some light on how a typical season behaves and unfolds.
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col_info:
+        st.info("""
+        ### 🧭 How To Use This Dashboard
+        
+        1. **Navigate Modules:** Click on the data modules on the sidebar at the left to view different categories of forensic data.
+        2. **Sub-Sections:** On some pages, there are multiple sections, so look for section buttons (pills) to navigate to those specific views.
+        3. **Interactive Intel:** Most of the data is interactive. Try clicking on charts, map locations, and bar graphs to see if a dedicated flyout of tactical intelligence is available!
+        """)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="background-color: #111; padding: 20px; border-radius: 10px; border-left: 4px solid #D32F2F;">
+        <h4 style="color: #D32F2F; margin-top: 0;">SPECIAL THANKS TO...</h4>
+        <ul style="color: #DDD; font-weight: 300;">
+            <li><b>Gunter Lorenz</b> at FMList.org for making their logging data available for analysis.</li>
+            <li><b>The WTFDA</b> and their detailed station database that gives us actionable intelligence on stations.</li>
+            <li><b>Mike Jeziorski</b> for his partnership in obtaining the data needed for this analysis.</li>
+            <li>This dashboard is custom coded using Python into a Streamlit app. None of that is something I have ever had experience with, so I absolutely could not have accomplished this endeavor without the help of my trusted AI partner, Google Gemini <i>(Thanks, G!)</i></li>
+        </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; color: #888;">
+    This is version 2.0 of our Es Data Dashboard and we are just getting started. We are already planning the next data components we want to add, new data sources to add to our logging data, expanding beyond just the traditional FM season and more! Make sure to bookmark this site and check back often!<br><br>
+    Thank you and best of DX!<br>
+    <span style="color: #D32F2F; font-weight: bold;">Loyd Van Horn</span><br>
+    DX Central<br>
+    Mandeville, Louisiana
+    </div>
+    """, unsafe_allow_html=True)
+
+# 6. MODULE 1: DASHBOARD OVERVIEW
+elif selected_page == "DASHBOARD OVERVIEW":
     st.header("Operational Overview")
-    m = st.columns(7)
+    m = st.columns(8)
     m[0].metric("Total Logs", f"{len(filt_df):,}")
     m[1].metric("Unique Stations", f"{filt_df['Station'].nunique():,}")
-    m[2].metric("US States Heard", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
-    m[3].metric("Canadian Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
-    m[4].metric("Mexican States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
-    m[5].metric("Countries Heard", filt_df['Country'].nunique())
-    m[6].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
+    m[2].metric("Unique DXers", f"{filt_df['DXer'].nunique():,}")
+    m[3].metric("US States Heard", filt_df[filt_df['Country'] == 'USA']['State'].nunique())
+    m[4].metric("Canadian Provinces", filt_df[filt_df['Country'] == 'Canada']['State'].nunique())
+    m[5].metric("Mexican States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
+    m[6].metric("Countries Heard", filt_df['Country'].nunique())
+    m[7].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
     
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
-# 6. MODULE 2: ES-CLOUD TRACKER
+# 7. MODULE 2: ES-CLOUD TRACKER
 elif selected_page == "ES-CLOUD TRACKER":
     st.header("Ionospheric Propagation Analysis")
     vm = st.pills("MAP LAYER SELECTION", ["Es Cloud Location Heatmap", "Path Line Analysis"], default="Es Cloud Location Heatmap")
@@ -400,7 +475,7 @@ elif selected_page == "ES-CLOUD TRACKER":
                 st.session_state.playing = False
                 st.rerun()
 
-# 7. MODULE 3: GEOGRAPHIC ANALYSIS
+# 8. MODULE 3: GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
@@ -550,7 +625,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 t5['M'] = t5['L']
                 st.dataframe(t5, column_config={"Frequency":"MHz", "L":st.column_config.NumberColumn("Logs", format="%d"), "M":st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['L'].max() if not t5.empty else 100))}, hide_index=True)
 
-# 8. MODULE 4: TEMPORAL TRENDS
+# 9. MODULE 4: TEMPORAL TRENDS
 elif selected_page == "TEMPORAL TRENDS":
     st.header("Temporal Intelligence Suite")
     tv = st.pills("MODULE", options=["Yearly Trends", "Monthly Almanac", "Hourly Analysis"], default="Hourly Analysis")
@@ -868,7 +943,7 @@ elif selected_page == "TEMPORAL TRENDS":
         fig_str.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Avg Logs / Opening Day", xaxis_title="Season")
         st.plotly_chart(fig_str, use_container_width=True)
 
-# 9. MODULE 5: FREQUENCY & MUF
+# 10. MODULE 5: FREQUENCY & MUF
 elif selected_page == "FREQUENCY & MUF":
     st.markdown("<h1 style='text-align: center; color: #D32F2F;'>FREQUENCY & MUF FORENSICS</h1>", unsafe_allow_html=True)
     st.markdown("---")
@@ -1057,7 +1132,7 @@ elif selected_page == "FREQUENCY & MUF":
             else:
                 st.warning("No signal intelligence recorded on this frequency.")
 
-# 10. MODULE 6: DXER INTELLIGENCE
+# 11. MODULE 6: DXER INTELLIGENCE
 elif selected_page == "DXER INTELLIGENCE": 
     st.markdown("<h1 style='text-align: center; color: #D32F2F;'>DXER NETWORK INTELLIGENCE</h1>", unsafe_allow_html=True)
     st.markdown("---")
@@ -1234,7 +1309,7 @@ elif selected_page == "DXER INTELLIGENCE":
         else:
             st.info("No regional data available for the current filter selection.")
 
-# 11. MODULE 7: STATION & RDS IQ
+# 12. MODULE 7: STATION & RDS IQ
 elif selected_page == "STATION & RDS IQ": 
     st.markdown("<h1 style='text-align: center; color: #D32F2F;'>STATION & RDS INTELLIGENCE HUB</h1>", unsafe_allow_html=True)
     st.markdown("---")
