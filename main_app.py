@@ -31,8 +31,8 @@ if 'selected_year' not in st.session_state:
     st.session_state.selected_year = None
 if 'selected_intl_country' not in st.session_state: 
     st.session_state.selected_intl_country = None
-if 'selected_mhz' not in st.session_state: 
-    st.session_state.selected_mhz = 88
+if 'current_freq' not in st.session_state: 
+    st.session_state.current_freq = 88.1
 if 'map_key' not in st.session_state: 
     st.session_state.map_key = 500000
 if 'hour_map_key' not in st.session_state: 
@@ -52,12 +52,31 @@ if st.session_state.full_screen:
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@200;300;400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+    
     html, body, [class*="st-"] { font-family: 'Oswald', sans-serif !important; background-color: #000000; color: #FFFFFF; font-weight: 300; }
     
     /* MAP CONTAINER HEIGHT REFINEMENT (v199.0) */
     [data-testid="stDeckGlJsonChart"] {
         height: 1500px !important;
     }
+    
+    /* VIRTUAL SDR LCD STYLING (v207.0) */
+    .lcd-screen {
+        background-color: #a3c2c2;
+        color: #002244;
+        font-family: 'Share Tech Mono', monospace;
+        font-size: 4.5rem;
+        font-weight: bold;
+        text-align: center;
+        padding: 10px;
+        border-radius: 8px;
+        border: 4px solid #222;
+        box-shadow: inset 0px 0px 15px rgba(0,0,0,0.6);
+        line-height: 1.1;
+        margin-bottom: 10px;
+    }
+    .lcd-unit { font-size: 1.8rem; color: #003366; }
     
     div.stButton > button {
         background-color: #000000 !important; color: #FFFFFF !important;
@@ -88,6 +107,19 @@ def get_avg_date(dates_series):
         return (datetime.datetime(2024, 1, 1) + datetime.timedelta(days=int(ds.dt.dayofyear.mean()) - 1)).strftime('%b %d')
     except: 
         return "N/A"
+
+# TUNER PARSER FUNCTION
+def update_freq_from_input():
+    raw = st.session_state.freq_direct_entry
+    if raw:
+        val = str(raw).strip()
+        if '.' not in val and len(val) >= 3:
+            val = val[:-1] + '.' + val[-1]
+        try:
+            st.session_state.current_freq = round(float(val), 2)
+        except:
+            pass
+    st.session_state.freq_direct_entry = ""
 
 # 2. DATA LOADING (GEOMETRIC RECOVERY ENGINE)
 @st.cache_data(ttl=2592000)
@@ -147,9 +179,8 @@ def load_data():
         dx_st_col = next((c for c in df.columns if 'DXer' in c and ('State' in c or 'Prov' in c)), 'DXer_State_Prov')
         rds_c_field = next((c for c in df.columns if 'RDS' in c and 'Decode' in c), 'RDS_Decode')
         
-        # New Metrics for Frequency and Station Yields
         df['Station_Discovery_Year'] = df.groupby('Station')[y_col].transform('min')
-        df['MHz_Round'] = df['Frequency'].apply(lambda x: int(float(x)))
+        df['Freq_Num'] = pd.to_numeric(df['Frequency'], errors='coerce')
 
         return df, df['Date_Obj'].max(), dist_col, dd_col, 'DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', l_dx, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c_field
     except Exception as e:
@@ -168,7 +199,7 @@ with st.sidebar:
     selected_page = option_menu("DATA MODULES", 
         ["DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ"], 
         icons=["house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin"], 
-        default_index=0)
+        default_index=4)
 
 # 4. GLOBAL FILTERS
 f_freq = "All"
@@ -791,57 +822,95 @@ elif selected_page == "FREQUENCY & MUF":
     st.markdown("<h1 style='text-align: center; color: #D32F2F;'>FREQUENCY & MUF FORENSICS</h1>", unsafe_allow_html=True)
     st.markdown("---")
     
-    st.markdown("### 🎚️ SDR FREQUENCY TUNER (MHz)")
-    st.caption("👈 Slide to 'tune' to a specific MHz band for tactical signal intelligence.")
+    st.markdown("### 🎚️ SDR FREQUENCY TUNER")
+    st.caption("Use the Coarse (1.0 MHz) or Fine (0.2 MHz) buttons to tune the dial, or enter a specific frequency directly.")
     
-    if 'MHz_Round' in filt_df.columns and not filt_df.empty:
-        mhz_list = sorted(filt_df['MHz_Round'].dropna().unique().tolist())
-        if not mhz_list:
-            mhz_list = [88]
-    else:
-        mhz_list = [88]
+    t1, t2, t3, t4, t5 = st.columns([1, 1, 3, 1, 1])
+    with t1:
+        if st.button("⏪ -1.0", use_container_width=True): 
+            st.session_state.current_freq = round(st.session_state.current_freq - 1.0, 2); st.rerun()
+    with t2:
+        if st.button("◀ -0.2", use_container_width=True): 
+            st.session_state.current_freq = round(st.session_state.current_freq - 0.2, 2); st.rerun()
+    with t3:
+        st.markdown(f'<div class="lcd-screen">{st.session_state.current_freq:.1f} <span class="lcd-unit">MHz</span></div>', unsafe_allow_html=True)
+        st.text_input("DIRECT ENTRY (e.g. 921 for 92.1)", key="freq_direct_entry", on_change=update_freq_from_input)
+    with t4:
+        if st.button("+0.2 ▶", use_container_width=True): 
+            st.session_state.current_freq = round(st.session_state.current_freq + 0.2, 2); st.rerun()
+    with t5:
+        if st.button("+1.0 ⏩", use_container_width=True): 
+            st.session_state.current_freq = round(st.session_state.current_freq + 1.0, 2); st.rerun()
 
-    default_mhz = st.session_state.selected_mhz if st.session_state.selected_mhz in mhz_list else mhz_list[0]
-    sel_mhz = st.select_slider("TUNING DIAL", options=mhz_list, value=default_mhz)
+    st.markdown("---")
+    col_m, col_f = st.columns([2.5, 1.5])
     
-    if st.session_state.selected_mhz != sel_mhz: 
-        st.session_state.selected_mhz = sel_mhz
-        st.rerun()
-
-    col_m, col_f = st.columns([3, 1])
+    s_freq = filt_df[filt_df['Freq_Num'] == st.session_state.current_freq]
+    
     with col_m:
-        st.markdown(f"#### MHz Band Analysis: {sel_mhz}.0 — {sel_mhz}.9")
-        f_slice = filt_df[filt_df['MHz_Round'] == sel_mhz]
-        freq_counts = f_slice.groupby('Frequency').size().reset_index(name='Logs')
-        fig_dial = px.bar(freq_counts, x='Frequency', y='Logs', template='plotly_dark', color_discrete_sequence=['#D32F2F'])
-        fig_dial.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(showgrid=False), xaxis=dict(title="Frequency (MHz)"))
-        st.plotly_chart(fig_dial, use_container_width=True)
-        
         st.markdown("#### 🌡️ MUF DAILY CEILING HEATMAP")
-        st.caption("Historical MUF peaks by Day/Year combination.")
-        muf_pivot = filt_df.pivot_table(index=dom_col, columns=y_col, values='Frequency', aggfunc='max').fillna(87.5).astype(float)
+        st.caption("Historical MUF peaks (Highest MHz recorded) by Day/Year combination across all stations.")
+        muf_pivot = filt_df.pivot_table(index=dom_col, columns=y_col, values='Freq_Num', aggfunc='max').fillna(87.5).astype(float)
         fig_muf = px.imshow(muf_pivot, template='plotly_dark', color_continuous_scale='YlOrRd')
         fig_muf.update_layout(height=800, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_muf, use_container_width=True)
         
     with col_f:
-        st.markdown(f"### 📡 {sel_mhz} MHz INTEL")
-        s_freq = filt_df[filt_df['MHz_Round'] == sel_mhz]
-        st.markdown('<div class="stat-header">TOTAL LOGS IN MHz BAND</div>', unsafe_allow_html=True)
+        st.markdown(f"### 📡 {st.session_state.current_freq} MHz INTEL")
+        
+        st.markdown('<div class="stat-header">TOTAL LOGS</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="stat-val">{len(s_freq):,}</div>', unsafe_allow_html=True)
         
-        if not s_freq.empty:
-            avg_dist = int(s_freq[d_col].mean()) if d_col in s_freq.columns and not s_freq[d_col].isna().all() else 0
-            st.markdown('<div class="stat-header">AVG RECEPTION DISTANCE</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="stat-val">{avg_dist} MI</div>', unsafe_allow_html=True)
+        if not s_freq.empty and len(filt_df) > 0:
+            pct_vol = (len(s_freq) / len(filt_df)) * 100
+            st.markdown('<div class="stat-header">% OF GLOBAL VOLUME</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-val">{pct_vol:.2f}%</div>', unsafe_allow_html=True)
             
-            st.markdown('<div class="stat-header">TOP 5 STATIONS (MHz BAND)</div>', unsafe_allow_html=True)
-            top_stats = s_freq.groupby('Station').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
-            st.dataframe(top_stats, hide_index=True)
+            st.markdown('<div class="stat-header">UNIQUE DXERS</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-val">{s_freq["DXer"].nunique()}</div>', unsafe_allow_html=True)
             
-            st.markdown('<div class="stat-header">TOP ACTIVE DXers</div>', unsafe_allow_html=True)
-            top_dxers = s_freq.groupby('DXer').size().reset_index(name='L').sort_values('L', ascending=False).head(5)
-            st.dataframe(top_dxers, hide_index=True)
+            # Active days math
+            total_active_days = filt_df['Date_Obj'].nunique()
+            freq_active_days = s_freq['Date_Obj'].nunique()
+            pct_active = (freq_active_days / total_active_days * 100) if total_active_days > 0 else 0
+            st.markdown('<div class="stat-header">% OF ACTIVE DAYS</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-val">{pct_active:.1f}%</div><div class="stat-label">Days this frequency was open</div>', unsafe_allow_html=True)
+            
+            # MUF Math
+            daily_max_series = filt_df.groupby('Date_Obj')['Freq_Num'].max()
+            days_as_muf = (daily_max_series == st.session_state.current_freq).sum()
+            pct_muf = (days_as_muf / total_active_days * 100) if total_active_days > 0 else 0
+            st.markdown('<div class="stat-header">MUF CEILING FREQUENCY</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-val">{pct_muf:.1f}%</div><div class="stat-label">Of total days, this was the absolute MUF</div>', unsafe_allow_html=True)
+            
+            st.markdown('<div class="stat-header">TOP MONTHS</div>', unsafe_allow_html=True)
+            st.dataframe(s_freq[m_name_col].value_counts().head(5).reset_index(name='Logs').rename(columns={'index': 'Month'}), hide_index=True)
+            
+            st.markdown('<div class="stat-header">TOP YEARS</div>', unsafe_allow_html=True)
+            st.dataframe(s_freq[y_col].value_counts().head(5).reset_index(name='Logs').rename(columns={'index': 'Year'}), hide_index=True)
+            
+            st.markdown('<div class="stat-header">TOP HOURS (LOCAL)</div>', unsafe_allow_html=True)
+            st.dataframe(s_freq[h_col].value_counts().head(5).reset_index(name='Logs').rename(columns={'index': 'Hour'}), hide_index=True)
+
+            st.markdown('<div class="stat-header">TOP 5 CATCH PATHS</div>', unsafe_allow_html=True)
+            f_paths = s_freq.groupby([dx_st_col, 'State']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+            f_paths['Path'] = f_paths[dx_st_col].astype(str) + " ➔ " + f_paths['State'].astype(str)
+            st.dataframe(f_paths[['Path', 'L']], hide_index=True)
+
+            st.markdown('<div class="stat-header">LOCATION DOMINANCE</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-val">{s_freq[dx_loc_col].mode().iloc[0]}</div><div class="stat-label">Most Active DXer Location</div>', unsafe_allow_html=True)
+
+            intl_freq = s_freq[~s_freq['Country'].isin(['USA', 'Canada'])]
+            if not intl_freq.empty:
+                st.markdown('<div class="stat-header">TOP INTERNATIONAL</div>', unsafe_allow_html=True)
+                st.dataframe(intl_freq.groupby('Country').size().reset_index(name='Logs').sort_values('Logs', ascending=False).head(3), hide_index=True)
+
+            f_rec = s_freq.sort_values(d_col, ascending=False).iloc[0]
+            st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-val">{f_rec[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-label">{f_rec["Station"]}, {f_rec["City"]}, {f_rec["State"]} by {f_rec["DXer"]} ({f_rec[dx_loc_col]}) on {f_rec["Date_Str"]} at {f_rec["Local_Time"]}</div>', unsafe_allow_html=True)
+        else:
+            st.warning("No signal intelligence recorded on this frequency.")
 
 # 10. PLACEHOLDERS FOR MODULE 6 & 7
 elif selected_page == "DXER INTELLIGENCE": 
