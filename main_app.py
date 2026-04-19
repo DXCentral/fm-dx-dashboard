@@ -179,7 +179,12 @@ def load_data():
         credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = bigquery.Client(credentials=credentials, project=credentials.project_id)
         df_logs = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_data_raw`").to_dataframe()
-        df_coords = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`").to_dataframe()
+        
+        # --- GRACEFUL DEGRADATION: Try FIPS table first, fallback to original if not built ---
+        try:
+            df_coords = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords_fips`").to_dataframe()
+        except:
+            df_coords = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.fm_list_coords`").to_dataframe()
         
         l_dx = next((c for c in df_logs.columns if 'Concatenated' in c and 'DX' in c), 'Concatenated_DXer_Location')
         l_st = next((c for c in df_logs.columns if 'Concatenated' in c and 'Station' in c), 'Concatenated_Station_Location')
@@ -191,12 +196,25 @@ def load_data():
         df_coords[c_dx] = df_coords[c_dx].str.upper().str.strip()
         df_coords[c_st] = df_coords[c_st].str.upper().str.strip()
 
-        dx_base = df_coords[[c_dx, 'DXer_Latitude', 'DXer_Longitude']].rename(columns={c_dx: 'Loc', 'DXer_Latitude': 'Lat', 'DXer_Longitude': 'Lon'})
-        st_base = df_coords[[c_st, 'Station_Lat', 'Station_Long']].rename(columns={c_st: 'Loc', 'Station_Lat': 'Lat', 'Station_Long': 'Lon'})
-        master_map = pd.concat([dx_base, st_base]).dropna().drop_duplicates(subset=['Loc'])
+        # FIPS extraction logic
+        if 'DXer_County' in df_coords.columns and 'DXer_FIPS' in df_coords.columns:
+            dx_base = df_coords[[c_dx, 'DXer_Latitude', 'DXer_Longitude', 'DXer_County', 'DXer_FIPS']].rename(columns={c_dx: 'Loc', 'DXer_Latitude': 'Lat', 'DXer_Longitude': 'Lon', 'DXer_County': 'County', 'DXer_FIPS': 'FIPS'})
+        else:
+            dx_base = df_coords[[c_dx, 'DXer_Latitude', 'DXer_Longitude']].rename(columns={c_dx: 'Loc', 'DXer_Latitude': 'Lat', 'DXer_Longitude': 'Lon'})
+            dx_base['County'] = None
+            dx_base['FIPS'] = None
+            
+        if 'Station_County' in df_coords.columns and 'Station_FIPS' in df_coords.columns:
+            st_base = df_coords[[c_st, 'Station_Lat', 'Station_Long', 'Station_County', 'Station_FIPS']].rename(columns={c_st: 'Loc', 'Station_Lat': 'Lat', 'Station_Long': 'Lon', 'Station_County': 'County', 'Station_FIPS': 'FIPS'})
+        else:
+            st_base = df_coords[[c_st, 'Station_Lat', 'Station_Long']].rename(columns={c_st: 'Loc', 'Station_Lat': 'Lat', 'Station_Long': 'Lon'})
+            st_base['County'] = None
+            st_base['FIPS'] = None
 
-        df = df_logs.merge(master_map, left_on='join_dx', right_on='Loc', how='left').rename(columns={'Lat': 'DX_Lat', 'Lon': 'DX_Lon'}).drop(columns=['Loc'])
-        df = df.merge(master_map, left_on='join_st', right_on='Loc', how='left').rename(columns={'Lat': 'ST_Lat', 'Lon': 'ST_Lon'}).drop(columns=['Loc'])
+        master_map = pd.concat([dx_base, st_base]).dropna(subset=['Lat', 'Lon']).drop_duplicates(subset=['Loc'])
+
+        df = df_logs.merge(master_map, left_on='join_dx', right_on='Loc', how='left').rename(columns={'Lat': 'DX_Lat', 'Lon': 'DX_Lon', 'County': 'DXer_County', 'FIPS': 'FIPS_DXer'}).drop(columns=['Loc'])
+        df = df.merge(master_map, left_on='join_st', right_on='Loc', how='left').rename(columns={'Lat': 'ST_Lat', 'Lon': 'ST_Lon', 'County': 'County', 'FIPS': 'FIPS'}).drop(columns=['Loc'])
 
         for c in ['DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', 'Mid_Lat', 'Mid_Long']:
             if c in df.columns: 
@@ -242,16 +260,39 @@ df, last_date, d_col, dd_col, dx_lat_f, dx_lon_f, st_lat_f, st_lon_f, dx_loc_col
 if df.empty: 
     st.stop()
 
-# 2b. DATA LOADING (WTFDA SHEET ENGINE)
-@st.cache_data(ttl=43200) # Syncs directly with Google Sheets every 12 hours
+# 2b. DATA LOADING (WTFDA BIGQUERY ENGINE)
+@st.cache_data(ttl=43200) # Syncs directly with BigQuery every 12 hours
 def load_wtfda_data():
     try:
-        sheet_url = "https://docs.google.com/spreadsheets/d/13kb09h7vY8X9PnmiwOJf51E6iy4nzPDZ10c4xpzOgdQ/export?format=csv"
-        df_w = pd.read_csv(sheet_url)
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        scopes = ["https://www.googleapis.com/auth/bigquery", "https://www.googleapis.com/auth/drive.readonly"]
+        credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        client = bigquery.Client(credentials=credentials, project=credentials.project_id)
+        
+        # Pulling from the new BigQuery Spatial Join table
+        df_w = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.wtfda_fips`").to_dataframe()
+        
+        # --- BIGQUERY AUTO-FIX REVERTER ---
+        # The V2 character map removes special characters from headers. We rename them back so the Python UI doesn't break.
+        col_mapping = {
+            'S_P': 'S/P',
+            'S_P_': 'S/P',
+            'PI_Code': 'PI Code',
+            'Call_Letters': 'Call Letters'
+        }
+        df_w = df_w.rename(columns=col_mapping)
+
         df_w = df_w[df_w['Country'].isin(['USA', 'CAN', 'MEX', 'Canada', 'Mexico'])]
         df_w['Country'] = df_w['Country'].replace({'CAN': 'Canada', 'MEX': 'Mexico'})
         df_w['Frequency'] = pd.to_numeric(df_w['Frequency'], errors='coerce')
-        df_w['Has_PI'] = df_w['PI Code'].apply(lambda x: 'Yes' if pd.notna(x) and str(x).strip() != '' else 'No')
+        
+        # Calculate PI Code based on the existence of ANY hex string in the PI Code column
+        if 'PI Code' in df_w.columns:
+            df_w['Has_PI'] = df_w['PI Code'].apply(lambda x: 'Yes' if pd.notna(x) and str(x).strip() != '' else 'No')
+        else:
+            df_w['Has_PI'] = 'No'
+            
         df_w['Band_Type'] = df_w['Frequency'].apply(lambda x: 'Non-Commercial (88.1-91.9)' if pd.notna(x) and x < 92.0 else 'Commercial (92.1-107.9)')
         df_w['Slogan_Clean'] = df_w['Slogan'].apply(clean_station_slogan)
         df_w['Format'] = df_w['Format'].fillna('Unknown')
@@ -263,6 +304,7 @@ def load_wtfda_data():
             
         return df_w
     except Exception as e:
+        st.error(f"WTFDA Load Error: {e}")
         return pd.DataFrame()
 
 # 3. SIDEBAR NAVIGATION
@@ -574,7 +616,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
             The current FMList database in BigQuery has not yet been linked to the US Census geometry shapefiles. 
             
             **To unlock this feature:**
-            Your database requires a standard `FIPS` code column. Once the Spatial Join SQL query is executed on your BigQuery warehouse, this map will automatically render. 
+            Your FMList coordinate database requires a standard `FIPS` code column matching the spatial join we just built for WTFDA. We will establish this database link in the next phase! 
             """)
         else:
             col_m, col_f = st.columns([3, 1]) if st.session_state.selected_logged_county else st.columns([1, 0.001])
@@ -1892,3 +1934,4 @@ elif selected_page == "STATION & RDS IQ":
             """)
         else:
             st.success("County Engine Online - Mapping available stations by FIPS code.")
+            # Note: Map rendering logic to be deployed here in the next phase!
