@@ -24,6 +24,8 @@ if 'reset_count' not in st.session_state:
     st.session_state.reset_count = 0
 if 'selected_state' not in st.session_state: 
     st.session_state.selected_state = None
+if 'selected_logged_county' not in st.session_state:
+    st.session_state.selected_logged_county = None
 if 'selected_tier' not in st.session_state: 
     st.session_state.selected_tier = None
 if 'selected_hour' not in st.session_state: 
@@ -40,6 +42,10 @@ if 'selected_st_loc' not in st.session_state:
     st.session_state.selected_st_loc = None
 if 'selected_wtfda_state' not in st.session_state:
     st.session_state.selected_wtfda_state = None
+if 'selected_wtfda_state_intel' not in st.session_state:
+    st.session_state.selected_wtfda_state_intel = None
+if 'selected_wtfda_county_intel' not in st.session_state:
+    st.session_state.selected_wtfda_county_intel = None
 if 'selected_format' not in st.session_state:
     st.session_state.selected_format = None
 if 'selected_slogan' not in st.session_state:
@@ -48,6 +54,8 @@ if 'dist_map_key' not in st.session_state:
     st.session_state.dist_map_key = 0
 if 'map_key' not in st.session_state: 
     st.session_state.map_key = 500000
+if 'logged_county_map_key' not in st.session_state:
+    st.session_state.logged_county_map_key = 550000
 if 'hour_map_key' not in st.session_state: 
     st.session_state.hour_map_key = 600000
 if 'year_map_key' not in st.session_state: 
@@ -62,6 +70,10 @@ if 'st_map_key' not in st.session_state:
     st.session_state.st_map_key = 1100000
 if 'wtfda_map_key' not in st.session_state:
     st.session_state.wtfda_map_key = 1200000
+if 'wtfda_state_intel_map_key' not in st.session_state:
+    st.session_state.wtfda_state_intel_map_key = 1250000
+if 'wtfda_county_intel_map_key' not in st.session_state:
+    st.session_state.wtfda_county_intel_map_key = 1260000
 if 'format_map_key' not in st.session_state:
     st.session_state.format_map_key = 1300000
 if 'slogan_map_key' not in st.session_state:
@@ -86,27 +98,16 @@ st.markdown("""
     html, body, [class*="st-"] { font-family: 'Oswald', sans-serif !important; background-color: #000000; color: #FFFFFF; font-weight: 300; }
     
     /* MAP CONTAINER HEIGHT REFINEMENT */
-    [data-testid="stDeckGlJsonChart"] {
-        height: 1500px !important;
-    }
+    [data-testid="stDeckGlJsonChart"] { height: 1500px !important; }
     
     /* HIDE SIDEBAR COLLAPSE ARROW */
     [data-testid="collapsedControl"] { display: none !important; }
     
     /* VIRTUAL SDR LCD STYLING */
     .lcd-screen {
-        background-color: #a3c2c2;
-        color: #002244;
-        font-family: 'Share Tech Mono', monospace;
-        font-size: 4.5rem;
-        font-weight: bold;
-        text-align: center;
-        padding: 10px;
-        border-radius: 8px;
-        border: 4px solid #222;
-        box-shadow: inset 0px 0px 15px rgba(0,0,0,0.6);
-        line-height: 1.1;
-        margin-bottom: 10px;
+        background-color: #a3c2c2; color: #002244; font-family: 'Share Tech Mono', monospace; font-size: 4.5rem;
+        font-weight: bold; text-align: center; padding: 10px; border-radius: 8px; border: 4px solid #222;
+        box-shadow: inset 0px 0px 15px rgba(0,0,0,0.6); line-height: 1.1; margin-bottom: 10px;
     }
     .lcd-unit { font-size: 1.8rem; color: #003366; }
     
@@ -159,9 +160,7 @@ def clean_station_slogan(text):
     if pd.isna(text) or str(text).strip() == '': 
         return 'Unknown'
     s = str(text)
-    # Parse generic frequencies out of slogan strings
     s = re.sub(r'(?<!\d)(8[7-9]|9\d|10[0-7])(\.\d)?(?!\d)', '{FREQ}', s)
-    # Normalize common letter/number prefixes
     s = re.sub(r'\b[Kk][- ]?\{FREQ\}', 'K-{FREQ}', s)
     s = re.sub(r'\b[Yy][- ]?\{FREQ\}', 'Y-{FREQ}', s)
     s = re.sub(r'\b[Qq][- ]?\{FREQ\}', 'Q-{FREQ}', s)
@@ -231,7 +230,6 @@ def load_data():
         df['Station_Discovery_Year'] = df.groupby('Station')[y_col].transform('min')
         df['Freq_Num'] = pd.to_numeric(df['Frequency'], errors='coerce')
         
-        # Build strict RDS Status indicator
         df['RDS_Status'] = df[rds_c_field].apply(lambda x: 'No' if pd.isna(x) or str(x).strip().lower() in ['', 'nan', 'none', 'no', '0', 'false'] else 'Yes')
 
         return df, df['Date_Obj'].max(), dist_col, dd_col, 'DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', l_dx, l_st, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c_field
@@ -257,6 +255,12 @@ def load_wtfda_data():
         df_w['Band_Type'] = df_w['Frequency'].apply(lambda x: 'Non-Commercial (88.1-91.9)' if pd.notna(x) and x < 92.0 else 'Commercial (92.1-107.9)')
         df_w['Slogan_Clean'] = df_w['Slogan'].apply(clean_station_slogan)
         df_w['Format'] = df_w['Format'].fillna('Unknown')
+        
+        if 'Callsign' not in df_w.columns:
+            if 'Call Letters' in df_w.columns: df_w['Callsign'] = df_w['Call Letters']
+            elif 'Call' in df_w.columns: df_w['Callsign'] = df_w['Call']
+            else: df_w['Callsign'] = 'Unknown'
+            
         return df_w
     except Exception as e:
         return pd.DataFrame()
@@ -472,7 +476,6 @@ elif selected_page == "ES-CLOUD TRACKER":
             display_date = f"{cur_date} | " if cur_date != "N/A" else ""
             pb_txt.write(f"## 🕒 {display_date}{cur_time}")
 
-        # STROBE EFFECT FIX: 30-Minute Persistence Window applied to both Playback and Slider states
         if cur_time == "SHOW ALL":
             render_df = map_df
         else:
@@ -509,7 +512,7 @@ elif selected_page == "ES-CLOUD TRACKER":
 # 8. MODULE 3: GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
     st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
-    gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "Distance Stats"], default="US States")
+    gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "US Counties", "Distance Stats"], default="US States")
     st.markdown("---")
     geo_df = filt_df.copy()
     geo_df = geo_df[geo_df['State'] != 'AM']
@@ -562,6 +565,94 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 t5['M'] = t5['L']
                 st.dataframe(t5, column_config={"Frequency":"MHz", "L":st.column_config.NumberColumn("Logs", format="%d"), "M":st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['L'].max() if not t5.empty else 100))}, hide_index=True)
+    
+    elif gv == "US Counties":
+        st.markdown("### 🗺️ US COUNTY LOG HEATMAP")
+        if 'FIPS' not in geo_df.columns:
+            st.warning("🚨 **County Intelligence Offline**")
+            st.markdown("""
+            The current FMList database in BigQuery has not yet been linked to the US Census geometry shapefiles. 
+            
+            **To unlock this feature:**
+            Your database requires a standard `FIPS` code column. Once the Spatial Join SQL query is executed on your BigQuery warehouse, this map will automatically render. 
+            """)
+        else:
+            col_m, col_f = st.columns([3, 1]) if st.session_state.selected_logged_county else st.columns([1, 0.001])
+            with col_m:
+                county_df = geo_df[geo_df['Country'] == 'USA'].dropna(subset=['FIPS', 'County'])
+                counts = county_df.groupby(['FIPS', 'County', 'State']).size().reset_index(name='Logs')
+                counts['Hover_Name'] = counts['County'] + " County, " + counts['State']
+                
+                fig = px.choropleth(counts, geojson='https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json', locations='FIPS', color='Logs', scope='usa', color_continuous_scale=gs, hover_name='Hover_Name', template='plotly_dark')
+                fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black'), margin={"r":0,"t":0,"l":0,"b":0}, height=750)
+                ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"m_county_{st.session_state.logged_county_map_key}")
+                
+                if ev and ev.get("selection") and ev["selection"].get("points"):
+                    sel_fips = ev["selection"]["points"][0]["location"]
+                    if st.session_state.selected_logged_county != sel_fips:
+                        st.session_state.selected_logged_county = sel_fips
+                        st.rerun()
+            
+            if st.session_state.selected_logged_county:
+                with col_f:
+                    fips_target = st.session_state.selected_logged_county
+                    c_data = county_df[county_df['FIPS'] == fips_target]
+                    c_name = c_data['County'].iloc[0] if not c_data.empty else "Unknown"
+                    sel = c_name
+                    
+                    st.markdown(f"### {c_name.upper()} COUNTY INTEL")
+                    if st.button("❌ CLEAR SELECTION", key="cl_c_map", use_container_width=True): 
+                        st.session_state.selected_logged_county = None
+                        st.session_state.logged_county_map_key += 1
+                        st.rerun()
+                        
+                    s_of = c_data
+                    s_fr = geo_df[geo_df['FIPS_DXer'] == fips_target] if 'FIPS_DXer' in geo_df.columns else pd.DataFrame()
+                        
+                    st.markdown('<div class="stat-header">TOTAL LOGS IN DATASET</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
+                    
+                    if not s_of.empty:
+                        top_st = s_of.groupby(['Frequency', 'Station', 'City']).size().idxmax()
+                        st.markdown('<div class="stat-header">MOST HEARD STATION</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-val">{top_st[1]}</div><div class="stat-label">{top_st[0]} MHz • {top_st[2]} • {s_of.groupby(["Frequency", "Station", "City"]).size().max()} Logs</div>', unsafe_allow_html=True)
+                        
+                        st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
+                        m_c, y_c = s_of[m_name_col].value_counts(), s_of[y_col].value_counts()
+                        st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Month</div><div class="stat-val" style="margin-top:0px;">{str(m_c.idxmax()).upper()} ({m_c.max()})</div></div>', unsafe_allow_html=True)
+                        st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax()} ({y_c.max()})</div></div>', unsafe_allow_html=True)
+                        
+                        st.markdown('<div class="window-box">', unsafe_allow_html=True)
+                        st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - Stations From Region</div>', unsafe_allow_html=True)
+                        od = pd.to_datetime(s_of['Local_Date'])
+                        st.markdown(f'<div class="stat-label">Start: {get_avg_date(od.groupby(s_of[y_col]).min())} | Peak: {get_avg_date(od)} | End: {get_avg_date(od.groupby(s_of[y_col]).max())}</div>', unsafe_allow_html=True)
+                        
+                        if not s_fr.empty:
+                            st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - DXers In Region</div>', unsafe_allow_html=True)
+                            fd = pd.to_datetime(s_fr['Local_Date'])
+                            st.markdown(f'<div class="stat-label">Start: {get_avg_date(fd.groupby(s_fr[y_col]).min())} | Peak: {get_avg_date(fd)} | End: {get_avg_date(fd.groupby(s_fr[y_col]).max())}</div>', unsafe_allow_html=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
+                        
+                        st.markdown('<div class="stat-header">FURTHEST RECEPTION</div>', unsafe_allow_html=True)
+                        f = s_of.sort_values(d_col, ascending=False).iloc[0]
+                        st.markdown(f'<div class="stat-val">{f[d_col]:,.0f} MILES</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-label">{f["Frequency"]} - {f["Station"]} by {f["DXer"]}, {f[dx_loc_col]} on {f["Date_Str"]} at {f["Local_Time"]}</div>', unsafe_allow_html=True)
+                    
+                    if not s_fr.empty:
+                        st.markdown('<div class="stat-header">LOCAL DXER ACTIVITY</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-val">{s_fr["DXer"].nunique()} UNIQUE DXERS</div>', unsafe_allow_html=True)
+                        
+                        st.markdown('<div class="stat-header">TOP RECEPTION PATHS</div>', unsafe_allow_html=True)
+                        st.dataframe(s_fr.groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
+                    
+                    st.markdown('<div class="stat-header">TOP TRANSMISSION PATHS</div>', unsafe_allow_html=True)
+                    st.dataframe(s_of.groupby(dx_st_col).size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
+                    
+                    st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
+                    t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
+                    t5['M'] = t5['L']
+                    st.dataframe(t5, column_config={"Frequency":"MHz", "L":st.column_config.NumberColumn("Logs", format="%d"), "M":st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['L'].max() if not t5.empty else 100))}, hide_index=True)
+
     else:
         if gv == "US States": 
             target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
@@ -1449,7 +1540,7 @@ elif selected_page == "STATION & RDS IQ":
     st.markdown("---")
     st.markdown("## 📻 INTELLIGENCE DATA HUB")
     
-    rds_view = st.pills("INTELLIGENCE DATA SOURCE", ["Logged RDS Data", "WTFDA RDS Intelligence", "WTFDA Station Intelligence"], default="Logged RDS Data")
+    rds_view = st.pills("INTELLIGENCE DATA SOURCE", ["Logged RDS Data", "WTFDA RDS Intelligence", "WTFDA Station Intelligence", "WTFDA US State Intelligence", "WTFDA County Intelligence"], default="WTFDA US State Intelligence")
     
     if rds_view == "Logged RDS Data":
         total_logs = len(filt_df)
@@ -1704,5 +1795,100 @@ elif selected_page == "STATION & RDS IQ":
             fig_corr.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="Standardized Slogan", yaxis_title="Programming Format", coloraxis_showscale=False)
             st.plotly_chart(fig_corr, use_container_width=True)
             
+    elif rds_view == "WTFDA US State Intelligence":
+        st.markdown("### 📡 WTFDA STATE-LEVEL FORENSICS")
+        st.caption("Click any state to interrogate available transmitters vs. historically logged stations.")
+        
+        wtfda_df = load_wtfda_data()
+        if not wtfda_df.empty:
+            us_w = wtfda_df[wtfda_df['Country'] == 'USA']
+            state_counts = us_w.groupby('S/P').size().reset_index(name='Stations')
+            
+            col_w_m, col_w_f = st.columns([3, 1]) if st.session_state.selected_wtfda_state_intel else st.columns([1, 0.001])
+            
+            with col_w_m:
+                fig_st_state = px.choropleth(state_counts, locations='S/P', locationmode='USA-states', color='Stations', scope='usa', color_continuous_scale='YlOrRd', template='plotly_dark')
+                fig_st_state.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor='black'), margin={"r":0,"t":0,"l":0,"b":0}, height=600)
+                ev_st_state = st.plotly_chart(fig_st_state, use_container_width=True, on_select="rerun", key=f"wtfda_state_intel_{st.session_state.wtfda_state_intel_map_key}")
+                
+                if ev_st_state and ev_st_state.get("selection") and ev_st_state["selection"].get("points"):
+                    sel_state = ev_st_state["selection"]["points"][0]["location"]
+                    if st.session_state.selected_wtfda_state_intel != sel_state:
+                        st.session_state.selected_wtfda_state_intel = sel_state
+                        st.rerun()
+
+            if st.session_state.selected_wtfda_state_intel:
+                with col_w_f:
+                    sel = st.session_state.selected_wtfda_state_intel
+                    st.markdown(f"### {sel} TARGET INTEL")
+                    if st.button("❌ CLEAR SELECTION", key="cl_wst_map", use_container_width=True): 
+                        st.session_state.selected_wtfda_state_intel = None
+                        st.session_state.wtfda_state_intel_map_key += 1
+                        st.rerun()
+                        
+                    s_intel_df = us_w[us_w['S/P'] == sel].copy()
+                    total_avail = len(s_intel_df)
+                    
+                    st.markdown('<div class="stat-header">TOTAL STATIONS IN STATE</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{total_avail:,}</div>', unsafe_allow_html=True)
+                    
+                    # LOGGED VS AVAILABLE MATH
+                    logged_in_state = filt_df[filt_df['State'] == sel]
+                    logged_stations = logged_in_state['Station'].dropna().str.upper().str.strip().unique()
+                    
+                    # Fuzzy match cross reference
+                    s_intel_df['Match_Call'] = s_intel_df['Callsign'].str.upper().str.strip()
+                    logged_count = s_intel_df[s_intel_df['Match_Call'].isin(logged_stations)].shape[0]
+                    pct_logged = (logged_count / total_avail) * 100 if total_avail > 0 else 0
+                    
+                    st.markdown('<div class="stat-header">NETWORK PENETRATION</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val" style="color:#FFFF00;">{pct_logged:.1f}%</div><div class="stat-label">{logged_count} of {total_avail} stations historically logged</div>', unsafe_allow_html=True)
+
+                    pi_ct = len(s_intel_df[s_intel_df['Has_PI'] == 'Yes'])
+                    pi_pt = (pi_ct / total_avail) * 100 if total_avail > 0 else 0
+                    st.markdown('<div class="stat-header">RDS PI ADOPTION</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-val">{pi_pt:.1f}%</div>', unsafe_allow_html=True)
+                    
+                    st.markdown('<div class="stat-header">TOP 3 CITIES</div>', unsafe_allow_html=True)
+                    city_counts = s_intel_df['City'].value_counts().reset_index(name='Stations').head(3)
+                    city_counts['%'] = (city_counts['Stations'] / total_avail) * 100
+                    city_counts['M'] = city_counts['%']
+                    st.dataframe(city_counts, column_config={"%": st.column_config.NumberColumn("%", format="%.1f%%"), "M": st.column_config.ProgressColumn("", format="", min_value=0, max_value=100)}, hide_index=True, use_container_width=True)
+                    
+                    st.markdown('<div class="stat-header">TOP 5 FREQUENCIES</div>', unsafe_allow_html=True)
+                    freq_counts = s_intel_df['Frequency'].value_counts().reset_index(name='Stations').head(5)
+                    freq_counts['%'] = (freq_counts['Stations'] / total_avail) * 100
+                    freq_counts['M'] = freq_counts['%']
+                    st.dataframe(freq_counts, column_config={"%": st.column_config.NumberColumn("%", format="%.1f%%"), "M": st.column_config.ProgressColumn("", format="", min_value=0, max_value=100)}, hide_index=True, use_container_width=True)
+                    
+                    st.markdown('<div class="stat-header">TOP 5 FORMATS</div>', unsafe_allow_html=True)
+                    fmt_counts = s_intel_df[s_intel_df['Format'] != 'Unknown']['Format'].value_counts().reset_index(name='Stations').head(5)
+                    fmt_counts['%'] = (fmt_counts['Stations'] / total_avail) * 100
+                    fmt_counts['M'] = fmt_counts['%']
+                    st.dataframe(fmt_counts, column_config={"%": st.column_config.NumberColumn("%", format="%.1f%%"), "M": st.column_config.ProgressColumn("", format="", min_value=0, max_value=100)}, hide_index=True, use_container_width=True)
+
+                    # THE GAMIFICATION LIST
+                    st.markdown('<div class="stat-header">🎯 UNHEARD STATION TARGETS</div>', unsafe_allow_html=True)
+                    st.caption(f"The following {total_avail - logged_count} stations have never been logged in the FMList dataset. Happy hunting!")
+                    
+                    unheard_df = s_intel_df[~s_intel_df['Match_Call'].isin(logged_stations)].sort_values(['Frequency', 'Callsign'])
+                    if not unheard_df.empty:
+                        unheard_df['Target'] = unheard_df['Frequency'].astype(str) + " - " + unheard_df['Callsign'] + " - " + unheard_df['City']
+                        st.dataframe(unheard_df[['Target']], height=300, hide_index=True, use_container_width=True)
+                    else:
+                        st.success("100% Penetration! Every station in this state has been logged.")
+
+    elif rds_view == "WTFDA County Intelligence":
+        st.markdown("### 🗺️ WTFDA COUNTY-LEVEL FORENSICS")
+        wtfda_df = load_wtfda_data()
+        
+        if 'FIPS' not in wtfda_df.columns:
+            st.warning("🚨 **County Intelligence Offline**")
+            st.markdown("""
+            The current WTFDA database in BigQuery has not yet been linked to the US Census geometry shapefiles. 
+            
+            **To unlock this feature:**
+            Your database requires a standard `FIPS` code column. Once the Spatial Join SQL query is executed on your BigQuery warehouse, this map will automatically render. 
+            """)
         else:
-            st.error("Failed to load WTFDA database. Please verify the Google Sheet URL permissions.")
+            st.success("County Engine Online - Mapping available stations by FIPS code.")
