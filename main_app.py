@@ -44,6 +44,8 @@ if 'selected_format' not in st.session_state:
     st.session_state.selected_format = None
 if 'selected_slogan' not in st.session_state:
     st.session_state.selected_slogan = None
+if 'dist_map_key' not in st.session_state: 
+    st.session_state.dist_map_key = 0
 if 'map_key' not in st.session_state: 
     st.session_state.map_key = 500000
 if 'hour_map_key' not in st.session_state: 
