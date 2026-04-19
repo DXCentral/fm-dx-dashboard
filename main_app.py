@@ -106,8 +106,14 @@ map_style_url = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.jso
 map_style_px = "carto-darkmatter"
 map_line_color = [211, 47, 47, 45]
 
-# Global Custom Heatmap Scale (Red = Low, Yellow = High)
-global_color_scale = [[0, th_dark_red], [0.25, th_red], [0.5, '#FF4500'], [0.75, th_orange], [1, th_yellow]]
+# Global Custom Heatmap Scale (Yellow/White = Low, Red = High)
+global_color_scale = [
+    [0.0, '#FFFFE0'], # Pale Yellow
+    [0.25, th_yellow], 
+    [0.5, th_orange], 
+    [0.75, th_red], 
+    [1.0, th_dark_red]
+]
 
 css = """
 <style>
@@ -140,11 +146,13 @@ css = css.replace("VAR_BG", th_bg).replace("VAR_TEXT", th_text).replace("VAR_PAN
 st.markdown(css, unsafe_allow_html=True)
 
 def get_avg_date(dates_series):
-    if dates_series.empty: return "N/A"
+    if dates_series.empty: 
+        return "N/A"
     try:
         ds = pd.to_datetime(dates_series)
         return (datetime.datetime(2024, 1, 1) + datetime.timedelta(days=int(ds.dt.dayofyear.mean()) - 1)).strftime('%b %d')
-    except: return "N/A"
+    except: 
+        return "N/A"
 
 def update_freq_from_input():
     raw = st.session_state.freq_direct_entry
@@ -155,11 +163,13 @@ def update_freq_from_input():
         try:
             st.session_state.selected_mhz = round(float(val), 1)
             st.session_state.freq_map_key += 1
-        except: pass
+        except:
+            pass
     st.session_state.freq_direct_entry = ""
 
 def clean_station_slogan(text):
-    if pd.isna(text) or str(text).strip() == '': return 'Unknown'
+    if pd.isna(text) or str(text).strip() == '': 
+        return 'Unknown'
     s = str(text)
     s = re.sub(r'(?<!\d)(8[7-9]|9\d|10[0-7])(\.\d)?(?!\d)', '{FREQ}', s)
     s = re.sub(r'\b[Kk][- ]?\{FREQ\}', 'K-{FREQ}', s)
@@ -248,6 +258,7 @@ def load_data():
         
         df['Station_Discovery_Year'] = df.groupby('Station')[y_col].transform('min')
         df['Freq_Num'] = pd.to_numeric(df['Frequency'], errors='coerce')
+        
         df['RDS_Status'] = df[rds_c_field].apply(lambda x: 'No' if pd.isna(x) or str(x).strip().lower() in ['', 'nan', 'none', 'no', '0', 'false'] else 'Yes')
 
         return df, df['Date_Obj'].max(), dist_col, dd_col, 'DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', l_dx, l_st, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c_field
@@ -256,10 +267,12 @@ def load_data():
         return pd.DataFrame(), None, "Distance", "Distribution", None, None, None, None, "DX", "Station", "Hour", "Year", "Day", "Month", "DXer_State", "RDS"
 
 df, last_date, d_col, dd_col, dx_lat_f, dx_lon_f, st_lat_f, st_lon_f, dx_loc_col, st_loc_col, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c = load_data()
-if df.empty: st.stop()
+
+if df.empty: 
+    st.stop()
 
 # 2b. DATA LOADING (WTFDA BIGQUERY ENGINE)
-@st.cache_data(ttl=43200)
+@st.cache_data(ttl=43200) # Syncs directly with BigQuery every 12 hours
 def load_wtfda_data():
     try:
         creds_dict = dict(st.secrets["gcp_service_account"])
@@ -268,8 +281,10 @@ def load_wtfda_data():
         credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = bigquery.Client(credentials=credentials, project=credentials.project_id)
         
+        # Pulling from the new BigQuery Spatial Join table
         df_w = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.wtfda_fips`").to_dataframe()
         
+        # --- BIGQUERY AUTO-FIX REVERTER ---
         col_mapping = {
             'S_P': 'S/P',
             'S_P_': 'S/P',
@@ -313,12 +328,24 @@ with st.sidebar:
     )
 
 # 4. GLOBAL FILTERS (STATIC)
-f_freq, f_dxer, f_stat, f_state, f_ctry, f_dxco, f_dxst, f_month, f_year, f_day, f_dist, f_reg, f_rds = ["All"]*13
+f_freq = "All"
+f_dxer = "All"
+f_stat = "All"
+f_state = "All"
+f_ctry = "All"
+f_dxco = "All"
+f_dxst = "All"
+f_month = "All"
+f_year = "All"
+f_day = "All"
+f_dist = "All"
+f_reg = "All"
+f_rds = "All"
 
 if not st.session_state.full_screen and selected_page != "WELCOME":
     rk = f"v{st.session_state.reset_count}" 
-    st.markdown(f"<h4 style='color: {th_red}; margin-bottom: 0px;'>GLOBAL FILTERS</h4>", unsafe_allow_html=True)
-    st.markdown(f"<hr style='margin-top: 5px; margin-bottom: 15px; border-color: {th_border};'>", unsafe_allow_html=True)
+    st.markdown("<h4 style='color: #D32F2F; margin-bottom: 0px;'>GLOBAL FILTERS</h4>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin-top: 5px; margin-bottom: 15px; border-color: #333;'>", unsafe_allow_html=True)
     
     r1, r2, r3 = st.columns(5), st.columns(5), st.columns(3)
     f_freq = r1[0].selectbox("Frequency", ["All"] + sorted(df['Frequency'].dropna().unique().astype(str).tolist()), key=f"f1_{rk}")
@@ -341,7 +368,21 @@ if not st.session_state.full_screen and selected_page != "WELCOME":
     st.markdown("<br>", unsafe_allow_html=True)
 
 filt_df = df.copy()
-f_logic = {'Frequency': f_freq, 'DXer': f_dxer, 'Station': f_stat, 'State': f_state, 'Country': f_ctry, 'DXer_Country': f_dxco, dx_st_col: f_dxst, 'Local_Month': f_month, 'Local_Year': f_year, 'Month_Day': f_day, dd_col: f_dist, 'DXer_Region': f_reg, rds_c: f_rds}
+f_logic = {
+    'Frequency': f_freq, 
+    'DXer': f_dxer, 
+    'Station': f_stat, 
+    'State': f_state, 
+    'Country': f_ctry, 
+    'DXer_Country': f_dxco, 
+    dx_st_col: f_dxst, 
+    'Local_Month': f_month, 
+    'Local_Year': f_year, 
+    'Month_Day': f_day, 
+    dd_col: f_dist, 
+    'DXer_Region': f_reg, 
+    rds_c: f_rds
+}
 
 for col, val in f_logic.items():
     if val != "All" and col in filt_df.columns: 
@@ -349,16 +390,74 @@ for col, val in f_logic.items():
 
 # 5. MODULE 0: WELCOME
 if selected_page == "WELCOME":
-    st.markdown("""<div style="text-align: center; padding-bottom: 20px;"><img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="max-width: 600px; width: 100%;"></div>""", unsafe_allow_html=True)
-    st.markdown(f"<h1 style='text-align: center; color: {th_red}; font-size: 3rem; margin-top: -10px;'>WELCOME TO SEDAP</h1>", unsafe_allow_html=True)
-    st.markdown(f"<h3 style='text-align: center; color: {th_orange}; margin-top: -15px;'>Sporadic Es Data Analysis Project</h3><hr>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style="text-align: center; padding-bottom: 20px;">
+        <img src="https://raw.githubusercontent.com/dxcentral/fm-dx-dashboard/main/SEDAP%20Banner.png" style="max-width: 600px; width: 100%;">
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #D32F2F; font-size: 3rem; margin-top: -10px;'>WELCOME TO SEDAP</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; color: #FFA500; margin-top: -15px;'>Sporadic Es Data Analysis Project</h3>", unsafe_allow_html=True)
+    st.markdown("---")
+    
     col_text, col_info = st.columns([2.5, 1])
+    
     with col_text:
-        st.markdown(f"""<div class="welcome-text">For years, analysis of Sporadic Es receptions on the FM band has been largely a siloed effort.<br><br>Historically, this has meant DXers analyzing the data of receptions from their specific location, comparing season-over-season and gauging quality of seasons based on total logs or number of events. What if some locations are just more prone to Sporadic Es than others? What if some DXers just have better setups or have more time to DX?<br><br><span class="welcome-highlight">Clearly, we need more data.</span><br><br>Further, we have seen over the past decade or two an explosion in the amount of resources available to DXers. Sites such as FMList.org and the Worldwide TV-FM DX Association (WTFDA)'s WLogger that provide real-time maps of receptions and sometimes email alerts for possible Sporadic Es propagation in a specific location. Sites such as Rabbitears and the RDS autologging maps that allow for unattended RDS decode logging of receptions through always-on receivers.<br><br>We haven't even mentioned the explosion of the use of Software-Defined Radio (SDR) technology that provides DXers with not only visual representations of their FM band, but the ability to record a portion or even the entire FM band for later review and logging of every single station received during an opening.<br><br>In recent years, we have seen a vast expansion of online FM DX receivers through sources such as FMDX.org that allow DXers to hear "first hand" the FM band in various locations all around the world and even spot openings using other locations as a beacon.<br><br>So, it is in that spirit that here at DX Central we decided it was time to collect all of that newly created data from the tens of thousands of FM Sporadic Es logs over the past decade or so.<br><br>We decided to start with North America, as that was the data that was most easily digestible and available to us from our partners at FMlist.org.<br><br>To our knowledge, this represents the first widespread and collective analysis of Sporadic Es logs from a large enough sample size to be able to spot trends and provide what we hope is a directionally accurate analysis.<br><br>We hope it helps provide insight for you not only into the historical performance of Sporadic Es seasons, but show you what is possible from your location, or in any given season. We can't predict Sporadic Es (yet!) but maybe we can at least shine some light on how a typical season behaves and unfolds.</div>""", unsafe_allow_html=True)
+        st.markdown("""
+        <div class="welcome-text">
+        For years, analysis of Sporadic Es receptions on the FM band has been largely a siloed effort.<br><br>
+        
+        Historically, this has meant DXers analyzing the data of receptions from their specific location, comparing season-over-season and gauging quality of seasons based on total logs or number of events. What if some locations are just more prone to Sporadic Es than others? What if some DXers just have better setups or have more time to DX?<br><br>
+        
+        <span class="welcome-highlight">Clearly, we need more data.</span><br><br>
+        
+        Further, we have seen over the past decade or two an explosion in the amount of resources available to DXers. Sites such as FMList.org and the Worldwide TV-FM DX Association (WTFDA)'s WLogger that provide real-time maps of receptions and sometimes email alerts for possible Sporadic Es propagation in a specific location. Sites such as Rabbitears and the RDS autologging maps that allow for unattended RDS decode logging of receptions through always-on receivers.<br><br>
+        
+        We haven't even mentioned the explosion of the use of Software-Defined Radio (SDR) technology that provides DXers with not only visual representations of their FM band, but the ability to record a portion or even the entire FM band for later review and logging of every single station received during an opening.<br><br>
+        
+        In recent years, we have seen a vast expansion of online FM DX receivers through sources such as FMDX.org that allow DXers to hear "first hand" the FM band in various locations all around the world and even spot openings using other locations as a beacon.<br><br>
+        
+        So, it is in that spirit that here at DX Central we decided it was time to collect all of that newly created data from the tens of thousands of FM Sporadic Es logs over the past decade or so.<br><br>
+        
+        We decided to start with North America, as that was the data that was most easily digestible and available to us from our partners at FMlist.org.<br><br>
+        
+        To our knowledge, this represents the first widespread and collective analysis of Sporadic Es logs from a large enough sample size to be able to spot trends and provide what we hope is a directionally accurate analysis.<br><br>
+        
+        We hope it helps provide insight for you not only into the historical performance of Sporadic Es seasons, but show you what is possible from your location, or in any given season. We can't predict Sporadic Es (yet!) but maybe we can at least shine some light on how a typical season behaves and unfolds.
+        </div>
+        """, unsafe_allow_html=True)
+        
     with col_info:
-        st.info("### 🧭 How To Use This Dashboard\n1. **Navigate Modules:** Click on the data modules on the sidebar at the left to view different categories of forensic data.\n2. **Sub-Sections:** On some pages, there are multiple sections, so look for section buttons (pills) to navigate to those specific views.\n3. **Interactive Intel:** Most of the data is interactive. Try clicking on charts, map locations, and bar graphs to see if a dedicated flyout of tactical intelligence is available!")
-        st.markdown(f"""<br><div style="background-color: {th_panel}; padding: 20px; border-radius: 10px; border-left: 4px solid {th_red}; border: 1px solid {th_border};"><h4 style="color: {th_red}; margin-top: 0;">SPECIAL THANKS TO...</h4><ul style="color: {th_text}; font-weight: 300;"><li><b>Gunter Lorenz</b> at FMList.org for making their logging data available for analysis.</li><li><b>The WTFDA</b> and their detailed station database that gives us actionable intelligence on stations.</li><li><b>Mike Jeziorski</b> for his partnership in obtaining the data needed for this analysis.</li><li>This dashboard is custom coded using Python into a Streamlit app. None of that is something I have ever had experience with, so I absolutely could not have accomplished this endeavor without the help of my trusted AI partner, Google Gemini <i>(Thanks, G!)</i></li></ul></div>""", unsafe_allow_html=True)
-    st.markdown(f"""---<div style="text-align: center; color: {th_gray};">This is version 2.0 of our Es Data Dashboard and we are just getting started. We are already planning the next data components we want to add, new data sources to add to our logging data, expanding beyond just the traditional FM season and more! Make sure to bookmark this site and check back often!<br><br>Thank you and best of DX!<br><span style="color: {th_red}; font-weight: bold;">Loyd Van Horn</span><br>DX Central<br>Mandeville, Louisiana</div>""", unsafe_allow_html=True)
+        st.info("""
+        ### 🧭 How To Use This Dashboard
+        
+        1. **Navigate Modules:** Click on the data modules on the sidebar at the left to view different categories of forensic data.
+        2. **Sub-Sections:** On some pages, there are multiple sections, so look for section buttons (pills) to navigate to those specific views.
+        3. **Interactive Intel:** Most of the data is interactive. Try clicking on charts, map locations, and bar graphs to see if a dedicated flyout of tactical intelligence is available!
+        """)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="background-color: #111; padding: 20px; border-radius: 10px; border-left: 4px solid #D32F2F;">
+        <h4 style="color: #D32F2F; margin-top: 0;">SPECIAL THANKS TO...</h4>
+        <ul style="color: #DDD; font-weight: 300;">
+            <li><b>Gunter Lorenz</b> at FMList.org for making their logging data available for analysis.</li>
+            <li><b>The WTFDA</b> and their detailed station database that gives us actionable intelligence on stations.</li>
+            <li><b>Mike Jeziorski</b> for his partnership in obtaining the data needed for this analysis.</li>
+            <li>This dashboard is custom coded using Python into a Streamlit app. None of that is something I have ever had experience with, so I absolutely could not have accomplished this endeavor without the help of my trusted AI partner, Google Gemini <i>(Thanks, G!)</i></li>
+        </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; color: #888;">
+    This is version 2.0 of our Es Data Dashboard and we are just getting started. We are already planning the next data components we want to add, new data sources to add to our logging data, expanding beyond just the traditional FM season and more! Make sure to bookmark this site and check back often!<br><br>
+    Thank you and best of DX!<br>
+    <span style="color: #D32F2F; font-weight: bold;">Loyd Van Horn</span><br>
+    DX Central<br>
+    Mandeville, Louisiana
+    </div>
+    """, unsafe_allow_html=True)
 
 # 6. MODULE 1: DASHBOARD OVERVIEW
 elif selected_page == "DASHBOARD OVERVIEW":
@@ -372,6 +471,7 @@ elif selected_page == "DASHBOARD OVERVIEW":
     m[5].metric("Mexican States", filt_df[filt_df['Country'] == 'Mexico']['State'].nunique())
     m[6].metric("Countries Heard", filt_df['Country'].nunique())
     m[7].metric("Furthest Reception", f"{filt_df[d_col].max() if not filt_df.empty else 0:,.0f} mi")
+    
     st.dataframe(filt_df[['Local_Date', 'Local_Time', 'Frequency', 'Station', 'City', 'State', 'Country', 'DXer', d_col]].head(100), use_container_width=True, hide_index=True)
 
 # 7. MODULE 2: ES-CLOUD TRACKER
@@ -388,11 +488,14 @@ elif selected_page == "ES-CLOUD TRACKER":
             map_df = filt_df[filt_df['Date_Obj'] == date_sel]
         else:
             date_range = st.date_input("Select Date Range", value=(avail_days[0], avail_days[-1]))
-            if len(date_range) == 2: map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
-            else: map_df = filt_df[filt_df['Date_Obj'] == date_range[0]]
+            if len(date_range) == 2: 
+                map_df = filt_df[(filt_df['Date_Obj'] >= date_range[0]) & (filt_df['Date_Obj'] <= date_range[1])]
+            else: 
+                map_df = filt_df[filt_df['Date_Obj'] == date_range[0]]
         
         speed_sets = {"1x": {"delay": 0.2, "step": 1}, "2x": {"delay": 0.1, "step": 2}, "3x": {"delay": 0.05, "step": 3}, "4x": {"delay": 0.01, "step": 4}}
         play_speed = st.selectbox("Playback Speed", options=list(speed_sets.keys()), index=1)
+        
         if st.button("📺 VIEW FULL SCREEN" if not st.session_state.full_screen else "❌ EXIT"): 
             st.session_state.full_screen = not st.session_state.full_screen
             st.rerun()
@@ -418,17 +521,22 @@ elif selected_page == "ES-CLOUD TRACKER":
             cur_time = hc2.select_slider("Time Control", options=["SHOW ALL"] + times_only, value="SHOW ALL")
             cur_date = "N/A"
 
-        if cur_time == "SHOW ALL": pb_txt.write("## 🕒 VIEWING: ALL SELECTED DATA")
+        if cur_time == "SHOW ALL":
+            pb_txt.write("## 🕒 VIEWING: ALL SELECTED DATA")
         else:
             display_date = f"{cur_date} | " if cur_date != "N/A" else ""
             pb_txt.write(f"## 🕒 {display_date}{cur_time}")
 
-        if cur_time == "SHOW ALL": render_df = map_df
+        if cur_time == "SHOW ALL":
+            render_df = map_df
         else:
             lookback_time_str = (datetime.datetime.strptime(cur_time, '%H:%M') - datetime.timedelta(minutes=30)).strftime('%H:%M')
-            if st.session_state.playing: render_df = map_df[(map_df['Date_Str'] == cur_date) & (map_df['Time_Str'] <= cur_time) & (map_df['Time_Str'] >= lookback_time_str)]
-            else: render_df = map_df[(map_df['Time_Str'] <= cur_time) & (map_df['Time_Str'] >= lookback_time_str)]
+            if st.session_state.playing:
+                render_df = map_df[(map_df['Date_Str'] == cur_date) & (map_df['Time_Str'] <= cur_time) & (map_df['Time_Str'] >= lookback_time_str)]
+            else:
+                render_df = map_df[(map_df['Time_Str'] <= cur_time) & (map_df['Time_Str'] >= lookback_time_str)]
         
+        # User requested exception: keep this Red = Low, White = High
         layers = [pdk.Layer(
             'HeatmapLayer' if vm == "Es Cloud Location Heatmap" else 'LineLayer', 
             data=render_df[['Final_Mid_Lat', 'Final_Mid_Lon']].dropna() if vm == "Es Cloud Location Heatmap" else render_df[[dx_lat_f, dx_lon_f, st_lat_f, st_lon_f]].dropna(), 
@@ -455,7 +563,7 @@ elif selected_page == "ES-CLOUD TRACKER":
 
 # 8. MODULE 3: GEOGRAPHIC ANALYSIS
 elif selected_page == "GEOGRAPHIC ANALYSIS":
-    st.markdown(f"<h2 style='text-align: center; color: {th_red};'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #D32F2F;'>GEOGRAPHIC ANALYSIS SUITE</h2>", unsafe_allow_html=True)
     gv = st.pills("MODULE", options=["International Stats", "Canadian Stats", "US States", "US Counties", "Distance Stats"], default="US States")
     st.markdown("---")
     geo_df = filt_df.copy()
@@ -494,17 +602,21 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 s_of = geo_df[geo_df[dd_col] == tier]
                 st.markdown('<div class="stat-header">TOTAL LOGS IN TIER</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
+                
                 st.markdown('<div class="stat-header">LIKELIHOOD SCORE</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-val">{(s_of["DXer"].nunique() / geo_df["DXer"].nunique()) * 100:.1f}%</div><div class="stat-label">Of DXers have caught this</div>', unsafe_allow_html=True)
+                
                 st.markdown('<div class="stat-header">TIER KINGS</div>', unsafe_allow_html=True)
                 st.dataframe(s_of.groupby('DXer').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
+                
                 st.markdown('<div class="stat-header">ORIGIN HOTSPOTS</div>', unsafe_allow_html=True)
                 st.dataframe(s_of.groupby('State').size().reset_index(name='L').sort_values('L', ascending=False).head(5), hide_index=True)
+                
                 st.markdown('<div class="stat-header">TOP 5 STATIONS</div>', unsafe_allow_html=True)
                 t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                 t5['M'] = t5['L']
                 st.dataframe(t5, column_config={"Frequency":"MHz", "L":st.column_config.NumberColumn("Logs", format="%d"), "M":st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['L'].max() if not t5.empty else 100))}, hide_index=True)
-
+    
     elif gv == "US Counties":
         st.markdown("### 🗺️ US COUNTY LOG HEATMAP")
         if 'FIPS' not in geo_df.columns:
@@ -537,6 +649,8 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     fips_target = st.session_state.selected_logged_county
                     c_data = county_df[county_df['FIPS'] == fips_target]
                     c_name = c_data['County'].iloc[0] if not c_data.empty else "Unknown"
+                    sel = c_name
+                    
                     st.markdown(f"### {c_name.upper()} COUNTY INTEL")
                     if st.button("❌ CLEAR SELECTION", key="cl_c_map", use_container_width=True): 
                         st.session_state.selected_logged_county = None
@@ -560,12 +674,12 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                         st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax()} ({y_c.max()})</div></div>', unsafe_allow_html=True)
                         
                         st.markdown('<div class="window-box">', unsafe_allow_html=True)
-                        st.markdown(f'<div class="stat-label" style="color:{th_red}">Season Window - Stations From Region</div>', unsafe_allow_html=True)
+                        st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - Stations From Region</div>', unsafe_allow_html=True)
                         od = pd.to_datetime(s_of['Local_Date'])
                         st.markdown(f'<div class="stat-label">Start: {get_avg_date(od.groupby(s_of[y_col]).min())} | Peak: {get_avg_date(od)} | End: {get_avg_date(od.groupby(s_of[y_col]).max())}</div>', unsafe_allow_html=True)
                         
                         if not s_fr.empty:
-                            st.markdown(f'<div class="stat-label" style="color:{th_red}">Season Window - DXers In Region</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - DXers In Region</div>', unsafe_allow_html=True)
                             fd = pd.to_datetime(s_fr['Local_Date'])
                             st.markdown(f'<div class="stat-label">Start: {get_avg_date(fd.groupby(s_fr[y_col]).min())} | Peak: {get_avg_date(fd)} | End: {get_avg_date(fd.groupby(s_fr[y_col]).max())}</div>', unsafe_allow_html=True)
                         st.markdown('</div>', unsafe_allow_html=True)
@@ -589,10 +703,14 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     t5 = s_of.groupby(['Frequency', 'Station']).size().reset_index(name='L').sort_values('L', ascending=False).head(5)
                     t5['M'] = t5['L']
                     st.dataframe(t5, column_config={"Frequency":"MHz", "L":st.column_config.NumberColumn("Logs", format="%d"), "M":st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['L'].max() if not t5.empty else 100))}, hide_index=True)
+
     else:
-        if gv == "US States": target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
-        elif gv == "Canadian Stats": target, scope, loc_mode, gj_url, gj_key = 'Canada', 'north america', 'geojson-id', "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson", "properties.name"
-        elif gv == "International Stats": target, scope, loc_mode, gj_url, gj_key = 'World', 'world', 'country names', None, None
+        if gv == "US States": 
+            target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
+        elif gv == "Canadian Stats": 
+            target, scope, loc_mode, gj_url, gj_key = 'Canada', 'north america', 'geojson-id', "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson", "properties.name"
+        elif gv == "International Stats": 
+            target, scope, loc_mode, gj_url, gj_key = 'World', 'world', 'country names', None, None
             
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_state else st.columns([1, 0.001])
         with col_m:
@@ -608,7 +726,8 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 c_data['MapLoc'] = c_data['State'].map(cam) if target == 'Canada' else c_data['State']
                 counts = c_data.groupby('MapLoc').size().reset_index(name='Logs').dropna()
                 fig = px.choropleth(counts, geojson=gj_url, locations='MapLoc', featureidkey=gj_key, locationmode=loc_mode, color='Logs', scope=scope, color_continuous_scale=global_color_scale, template=plotly_tmpl)
-                if target != 'USA': fig.update_geos(fitbounds="locations", visible=True, showsubunits=True, subunitcolor=th_border)
+                if target != 'USA': 
+                    fig.update_geos(fitbounds="locations", visible=True, showsubunits=True, subunitcolor=th_border)
                     
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor=th_bg), margin={"r":0,"t":0,"l":0,"b":0}, height=750)
             ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"m_{gv}_{st.session_state.map_key}")
@@ -632,8 +751,10 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     st.session_state.map_key += 1
                     st.rerun()
                     
-                if target == 'World': s_of, s_fr = geo_df[geo_df['MapCountry'] == sel], geo_df[geo_df['DXer_Country'] == sel]
-                else: s_of, s_fr = geo_df[geo_df['Country'] == target][geo_df['State'] == sel], geo_df[geo_df[dx_st_col] == sel]
+                if target == 'World': 
+                    s_of, s_fr = geo_df[geo_df['MapCountry'] == sel], geo_df[geo_df['DXer_Country'] == sel]
+                else: 
+                    s_of, s_fr = geo_df[geo_df['Country'] == target][geo_df['State'] == sel], geo_df[geo_df[dx_st_col] == sel]
                     
                 st.markdown('<div class="stat-header">TOTAL LOGS IN DATASET</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
@@ -649,11 +770,11 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax()} ({y_c.max()})</div></div>', unsafe_allow_html=True)
                     
                     st.markdown('<div class="window-box">', unsafe_allow_html=True)
-                    st.markdown(f'<div class="stat-label" style="color:{th_red}">Season Window - Stations From Region</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - Stations From Region</div>', unsafe_allow_html=True)
                     od = pd.to_datetime(s_of['Local_Date'])
                     st.markdown(f'<div class="stat-label">Start: {get_avg_date(od.groupby(s_of[y_col]).min())} | Peak: {get_avg_date(od)} | End: {get_avg_date(od.groupby(s_of[y_col]).max())}</div>', unsafe_allow_html=True)
                     
-                    st.markdown(f'<div class="stat-label" style="color:{th_red}">Season Window - DXers In Region</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - DXers In Region</div>', unsafe_allow_html=True)
                     fd = pd.to_datetime(s_fr['Local_Date'])
                     st.markdown(f'<div class="stat-label">Start: {get_avg_date(fd.groupby(s_fr[y_col]).min())} | Peak: {get_avg_date(fd)} | End: {get_avg_date(fd.groupby(s_fr[y_col]).max())}</div>', unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
@@ -1053,10 +1174,10 @@ elif selected_page == "FREQUENCY & MUF":
                     for c in df.columns:
                         val = df.at[r, c]
                         if pd.notna(val) and val > 0:
-                            if val >= 107.0: bg = '#FFFF00'; fg = 'black'
+                            if val >= 107.0: bg = '#D32F2F'; fg = 'white'
                             elif val >= 98.0: bg = '#FFA500'; fg = 'black'
-                            elif val >= 92.0: bg = '#D32F2F'; fg = 'white'
-                            else: bg = '#640000'; fg = 'white'
+                            elif val >= 92.0: bg = '#FFFF00'; fg = 'black'
+                            else: bg = '#FFFFE0'; fg = 'black'
                             styles.at[r, c] = f'background-color: {bg}; color: {fg}; font-weight: bold;'
                         else:
                             styles.at[r, c] = f'background-color: {th_bg}; color: {th_gray};'
@@ -1437,7 +1558,7 @@ elif selected_page == "STATION & RDS IQ":
                 m_c, y_c = s_df[m_name_col].value_counts(), s_df[y_col].value_counts()
                 st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
                 st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Month</div><div class="stat-val" style="margin-top:0px;">{str(m_c.idxmax()).upper() if not m_c.empty else "N/A"}</div></div>', unsafe_allow_html=True)
-                st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax()} ({y_c.max()})</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax() if not y_c.empty else "N/A"}</div></div>', unsafe_allow_html=True)
                 
                 st.markdown('<div class="window-box">', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-label" style="color:{th_red}">Season Window</div>', unsafe_allow_html=True)
@@ -1720,7 +1841,16 @@ elif selected_page == "STATION & RDS IQ":
             corr_pivot = corr_pivot.reindex(index=top_formats_list, columns=top_slogans_list).fillna(0)
             corr_pivot = corr_pivot.loc[(corr_pivot.sum(axis=1) > 0)]
             
-            fig_corr = px.imshow(corr_pivot, template=plotly_tmpl, color_continuous_scale=global_color_scale, text_auto=True, aspect="auto")
+            # Custom Scale: 0 is Black, low hits are Pale Yellow, high hits are Dark Red
+            gs_heat = [
+                [0.0, th_bg], 
+                [0.01, '#FFFFCC'], 
+                [0.25, th_yellow], 
+                [0.5, th_orange], 
+                [0.75, th_red], 
+                [1.0, th_dark_red]
+            ]
+            fig_corr = px.imshow(corr_pivot, template=plotly_tmpl, color_continuous_scale=gs_heat, text_auto=True, aspect="auto")
             fig_corr.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="Standardized Slogan", yaxis_title="Programming Format", coloraxis_showscale=False)
             st.plotly_chart(fig_corr, use_container_width=True)
             
