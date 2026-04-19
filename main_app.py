@@ -108,7 +108,7 @@ map_line_color = [211, 47, 47, 45]
 
 # Global Custom Heatmap Scale (Yellow/White = Low, Red = High)
 global_color_scale = [
-    [0.0, '#FFFFE0'], # Pale Yellow
+    [0.0, '#FFFFE0'], 
     [0.25, th_yellow], 
     [0.5, th_orange], 
     [0.75, th_red], 
@@ -587,7 +587,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                         st.rerun()
                         
             pulse_data = geo_df.groupby(['Local_Month', dd_col]).size().reset_index(name='Logs')
-            fig_pulse = px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', color_discrete_sequence=[th_red, th_orange, th_text, th_gray], template=plotly_tmpl)
+            fig_pulse = px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', color_discrete_sequence=['#D32F2F', '#FFA500', '#FFFFFF', '#888888'], template=plotly_tmpl)
             st.plotly_chart(fig_pulse, use_container_width=True)
             
         if st.session_state.selected_tier:
@@ -625,7 +625,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
             The current FMList database in BigQuery has not yet been linked to the US Census geometry shapefiles. 
             
             **To unlock this feature:**
-            Your database requires a standard `FIPS` code column. Once the Spatial Join SQL query is executed on your BigQuery warehouse, this map will automatically render. 
+            Your FMList coordinate database requires a standard `FIPS` code column matching the spatial join we just built for WTFDA. We will establish this database link in the next phase! 
             """)
         else:
             col_m, col_f = st.columns([3, 1]) if st.session_state.selected_logged_county else st.columns([1, 0.001])
@@ -674,12 +674,12 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                         st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax()} ({y_c.max()})</div></div>', unsafe_allow_html=True)
                         
                         st.markdown('<div class="window-box">', unsafe_allow_html=True)
-                        st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - Stations From Region</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-label" style="color:{th_red}">Season Window - Stations From Region</div>', unsafe_allow_html=True)
                         od = pd.to_datetime(s_of['Local_Date'])
                         st.markdown(f'<div class="stat-label">Start: {get_avg_date(od.groupby(s_of[y_col]).min())} | Peak: {get_avg_date(od)} | End: {get_avg_date(od.groupby(s_of[y_col]).max())}</div>', unsafe_allow_html=True)
                         
                         if not s_fr.empty:
-                            st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - DXers In Region</div>', unsafe_allow_html=True)
+                            st.markdown(f'<div class="stat-label" style="color:{th_red}">Season Window - DXers In Region</div>', unsafe_allow_html=True)
                             fd = pd.to_datetime(s_fr['Local_Date'])
                             st.markdown(f'<div class="stat-label">Start: {get_avg_date(fd.groupby(s_fr[y_col]).min())} | Peak: {get_avg_date(fd)} | End: {get_avg_date(fd.groupby(s_fr[y_col]).max())}</div>', unsafe_allow_html=True)
                         st.markdown('</div>', unsafe_allow_html=True)
@@ -704,13 +704,34 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     t5['M'] = t5['L']
                     st.dataframe(t5, column_config={"Frequency":"MHz", "L":st.column_config.NumberColumn("Logs", format="%d"), "M":st.column_config.ProgressColumn("", format="%d", min_value=0, max_value=int(t5['L'].max() if not t5.empty else 100))}, hide_index=True)
 
+            # --- TARGET LIST FOR UNHEARD COUNTIES ---
+            st.markdown("---")
+            st.markdown(f"<h3 style='color: {th_red};'>🎯 UNHEARD COUNTY HIT LIST</h3>", unsafe_allow_html=True)
+            st.caption("Counties with active FM transmitters that have never been logged in the current dataset.")
+            
+            wtfda_df_all = load_wtfda_data()
+            if not wtfda_df_all.empty and 'FIPS' in wtfda_df_all.columns:
+                logged_fips = county_df['FIPS'].unique().tolist()
+                us_wtfda = wtfda_df_all[wtfda_df_all['Country'] == 'USA'].dropna(subset=['FIPS', 'County'])
+                avail_counties = us_wtfda.groupby(['FIPS', 'County', 'S/P']).size().reset_index(name='Stations')
+                
+                unheard = avail_counties[~avail_counties['FIPS'].isin(logged_fips)]
+                
+                if unheard.empty:
+                    st.success("100% Penetration! Every county with a transmitter has been logged.")
+                else:
+                    unheard_by_state = unheard.groupby('S/P')
+                    with st.expander("VIEW UNHEARD COUNTIES BY STATE", expanded=False):
+                        for state, state_data in sorted(unheard_by_state):
+                            sorted_state_data = state_data.sort_values('County')
+                            county_list_strs = [f"{row['County'].title()} ({row['Stations']})" for _, row in sorted_state_data.iterrows()]
+                            state_str = f"**{state} ({len(sorted_state_data)})**: " + ", ".join(county_list_strs)
+                            st.markdown(state_str)
+
     else:
-        if gv == "US States": 
-            target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
-        elif gv == "Canadian Stats": 
-            target, scope, loc_mode, gj_url, gj_key = 'Canada', 'north america', 'geojson-id', "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson", "properties.name"
-        elif gv == "International Stats": 
-            target, scope, loc_mode, gj_url, gj_key = 'World', 'world', 'country names', None, None
+        if gv == "US States": target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
+        elif gv == "Canadian Stats": target, scope, loc_mode, gj_url, gj_key = 'Canada', 'north america', 'geojson-id', "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson", "properties.name"
+        elif gv == "International Stats": target, scope, loc_mode, gj_url, gj_key = 'World', 'world', 'country names', None, None
             
         col_m, col_f = st.columns([3, 1]) if st.session_state.selected_state else st.columns([1, 0.001])
         with col_m:
@@ -726,8 +747,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 c_data['MapLoc'] = c_data['State'].map(cam) if target == 'Canada' else c_data['State']
                 counts = c_data.groupby('MapLoc').size().reset_index(name='Logs').dropna()
                 fig = px.choropleth(counts, geojson=gj_url, locations='MapLoc', featureidkey=gj_key, locationmode=loc_mode, color='Logs', scope=scope, color_continuous_scale=global_color_scale, template=plotly_tmpl)
-                if target != 'USA': 
-                    fig.update_geos(fitbounds="locations", visible=True, showsubunits=True, subunitcolor=th_border)
+                if target != 'USA': fig.update_geos(fitbounds="locations", visible=True, showsubunits=True, subunitcolor=th_border)
                     
             fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor=th_bg), margin={"r":0,"t":0,"l":0,"b":0}, height=750)
             ev = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key=f"m_{gv}_{st.session_state.map_key}")
@@ -751,10 +771,8 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     st.session_state.map_key += 1
                     st.rerun()
                     
-                if target == 'World': 
-                    s_of, s_fr = geo_df[geo_df['MapCountry'] == sel], geo_df[geo_df['DXer_Country'] == sel]
-                else: 
-                    s_of, s_fr = geo_df[geo_df['Country'] == target][geo_df['State'] == sel], geo_df[geo_df[dx_st_col] == sel]
+                if target == 'World': s_of, s_fr = geo_df[geo_df['MapCountry'] == sel], geo_df[geo_df['DXer_Country'] == sel]
+                else: s_of, s_fr = geo_df[geo_df['Country'] == target][geo_df['State'] == sel], geo_df[geo_df[dx_st_col] == sel]
                     
                 st.markdown('<div class="stat-header">TOTAL LOGS IN DATASET</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-val">{len(s_of):,}</div>', unsafe_allow_html=True)
@@ -770,11 +788,11 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax()} ({y_c.max()})</div></div>', unsafe_allow_html=True)
                     
                     st.markdown('<div class="window-box">', unsafe_allow_html=True)
-                    st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - Stations From Region</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-label" style="color:{th_red}">Season Window - Stations From Region</div>', unsafe_allow_html=True)
                     od = pd.to_datetime(s_of['Local_Date'])
                     st.markdown(f'<div class="stat-label">Start: {get_avg_date(od.groupby(s_of[y_col]).min())} | Peak: {get_avg_date(od)} | End: {get_avg_date(od.groupby(s_of[y_col]).max())}</div>', unsafe_allow_html=True)
                     
-                    st.markdown('<div class="stat-label" style="color:#D32F2F">Season Window - DXers In Region</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-label" style="color:{th_red}">Season Window - DXers In Region</div>', unsafe_allow_html=True)
                     fd = pd.to_datetime(s_fr['Local_Date'])
                     st.markdown(f'<div class="stat-label">Start: {get_avg_date(fd.groupby(s_fr[y_col]).min())} | Peak: {get_avg_date(fd)} | End: {get_avg_date(fd.groupby(s_fr[y_col]).max())}</div>', unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
@@ -1844,7 +1862,7 @@ elif selected_page == "STATION & RDS IQ":
             # Custom Scale: 0 is Black, low hits are Pale Yellow, high hits are Dark Red
             gs_heat = [
                 [0.0, th_bg], 
-                [0.01, '#FFFFCC'], 
+                [0.01, '#FFFFE0'], 
                 [0.25, th_yellow], 
                 [0.5, th_orange], 
                 [0.75, th_red], 
