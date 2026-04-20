@@ -87,6 +87,14 @@ if 'freq_direct_entry' not in st.session_state:
 if 'muf_tactical_date' not in st.session_state:
     st.session_state.muf_tactical_date = None
 
+# Teleport Engine Variables
+if 'nav_idx' not in st.session_state:
+    st.session_state.nav_idx = 0
+if 'jump_to_rds' not in st.session_state:
+    st.session_state.jump_to_rds = False
+if 'rds_view_default' not in st.session_state:
+    st.session_state.rds_view_default = "WTFDA US State Intelligence"
+
 if st.session_state.full_screen:
     st.markdown("""<style>[data-testid="stSidebar"], [data-testid="stHeader"], .st-emotion-cache-zq5m06 { display: none !important; } .stMain { padding: 0 !important; } .watermark { bottom: 120px !important; } </style>""", unsafe_allow_html=True)
 
@@ -179,6 +187,11 @@ def clean_station_slogan(text):
     s = re.sub(r'\b[Xx][- ]?\{FREQ\}', 'X-{FREQ}', s)
     s = re.sub(r'\b(Power|Rock|Magic|Mix|Kiss|Hits|Classic|Oldies|Nash|The Fox|The Bear|The Bull|The Eagle|Bob)[- ]?\{FREQ\}', r'\1 {FREQ}', s, flags=re.IGNORECASE)
     return s.strip()
+
+# TELEPORT CALLBACK FUNCTION
+def jump_to_county(fips_code):
+    st.session_state.selected_wtfda_county_intel = fips_code
+    st.session_state.jump_to_rds = True
 
 # 2. DATA LOADING (GEOMETRIC RECOVERY ENGINE)
 @st.cache_data(ttl=2592000)
@@ -316,16 +329,28 @@ def load_wtfda_data():
         st.error(f"WTFDA Load Error: {e}")
         return pd.DataFrame()
 
-# 3. SIDEBAR NAVIGATION
+# 3. SIDEBAR NAVIGATION ENGINE
+pages = ["WELCOME", "DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ"]
+
+if st.session_state.jump_to_rds:
+    st.session_state.nav_idx = pages.index("STATION & RDS IQ")
+    st.session_state.rds_view_default = "WTFDA County Intelligence"
+    st.session_state.jump_to_rds = False
+
 from streamlit_option_menu import option_menu
 with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     selected_page = option_menu(
         "DATA MODULES", 
-        ["WELCOME", "DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ"], 
+        pages, 
         icons=["broadcast", "house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin"], 
-        default_index=0
+        default_index=st.session_state.nav_idx,
+        key=f"nav_menu_{st.session_state.reset_count}_{st.session_state.nav_idx}"
     )
+
+if pages.index(selected_page) != st.session_state.nav_idx:
+    st.session_state.nav_idx = pages.index(selected_page)
+    st.rerun()
 
 # 4. GLOBAL FILTERS (STATIC)
 f_freq = "All"
@@ -422,7 +447,7 @@ if selected_page == "WELCOME":
         
         To our knowledge, this represents the first widespread and collective analysis of Sporadic Es logs from a large enough sample size to be able to spot trends and provide what we hope is a directionally accurate analysis.<br><br>
         
-        We hope it helps provide insight for you not only into the historical performance of Sporadic Es seasons, but show you what is possible from your location, or in any given season. We can't predict Sporadic Es (yet!) but maybe we can at least shine some light on how a typical season behaves and unfolds.
+        We hope it helps provide insight for you not only into the historical performance of Sporadic Es seasons, but show you what is possible from your location, or in any given season. We cant predict Sporadic Es (yet!) but maybe we can at least shine some light on how a typical season behaves and unfolds.
         </div>
         """, unsafe_allow_html=True)
         
@@ -587,7 +612,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                         st.rerun()
                         
             pulse_data = geo_df.groupby(['Local_Month', dd_col]).size().reset_index(name='Logs')
-            fig_pulse = px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', color_discrete_sequence=[th_red, th_orange, th_text, th_gray], template=plotly_tmpl)
+            fig_pulse = px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', color_discrete_sequence=['#D32F2F', '#FFA500', '#FFFFFF', '#888888'], template=plotly_tmpl)
             st.plotly_chart(fig_pulse, use_container_width=True)
             
         if st.session_state.selected_tier:
@@ -707,7 +732,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
             # --- TARGET LIST FOR UNHEARD COUNTIES ---
             st.markdown("---")
             st.markdown(f"<h3 style='color: {th_red}; text-align: center; letter-spacing: 2px;'>🎯 UNHEARD COUNTY HIT LIST</h3>", unsafe_allow_html=True)
-            st.markdown(f"<div style='text-align: center; color: {th_gray}; margin-bottom: 30px;'>Counties with active FM transmitters that have never been logged in the current dataset.</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; color: {th_gray}; margin-bottom: 30px;'>Counties with active FM transmitters that have never been logged in the current dataset.<br>Click any county below to immediately view its available targets.</div>", unsafe_allow_html=True)
             
             wtfda_df_all = load_wtfda_data()
             if not wtfda_df_all.empty and 'FIPS' in wtfda_df_all.columns:
@@ -724,18 +749,15 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     for state, state_data in sorted(unheard_by_state):
                         sorted_state_data = state_data.sort_values('County')
                         
-                        st.markdown(f'<div class="stat-header" style="border-bottom: 1px solid {th_red}; font-size: 1.1rem; margin-top: 25px;">{state} <span style="color: {th_gray}; font-size: 0.9rem;">({len(sorted_state_data)} COUNTIES)</span></div>', unsafe_allow_html=True)
-                        
-                        county_list_strs = [f"<span style='color:{th_text};'>{row['County'].title()}</span> <span style='color:{th_yellow};'>({row['Stations']})</span>" for _, row in sorted_state_data.iterrows()]
+                        st.markdown(f'<div class="stat-header" style="border-bottom: 1px solid {th_red}; font-size: 1.1rem; margin-top: 25px; margin-bottom: 15px;">{state} <span style="color: {th_gray}; font-size: 0.9rem;">({len(sorted_state_data)} COUNTIES)</span></div>', unsafe_allow_html=True)
                         
                         n_cols = 4
-                        chunk_size = (len(county_list_strs) + n_cols - 1) // n_cols
                         cols = st.columns(n_cols)
                         
-                        for i in range(n_cols):
-                            chunk = county_list_strs[i*chunk_size : (i+1)*chunk_size]
-                            if chunk:
-                                cols[i].markdown(f"<div style='line-height: 1.6; font-size: 0.9rem;'>{'<br>'.join(chunk)}</div>", unsafe_allow_html=True)
+                        for idx, (_, row) in enumerate(sorted_state_data.iterrows()):
+                            col_idx = idx % n_cols
+                            btn_label = f"{row['County'].title()} ({row['Stations']})"
+                            cols[col_idx].button(btn_label, key=f"uh_btn_{row['FIPS']}", on_click=jump_to_county, args=(row['FIPS'],), use_container_width=True)
 
     else:
         if gv == "US States": target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
@@ -1618,7 +1640,14 @@ elif selected_page == "STATION & RDS IQ":
     st.markdown("---")
     st.markdown("## 📻 INTELLIGENCE DATA HUB")
     
-    rds_view = st.pills("INTELLIGENCE DATA SOURCE", ["Logged RDS Data", "WTFDA RDS Intelligence", "WTFDA Station Intelligence", "WTFDA US State Intelligence", "WTFDA County Intelligence"], default="WTFDA US State Intelligence")
+    # We update the default view locally if a manual click overrides our programmatic teleport
+    if 'rds_view_default' not in st.session_state:
+        st.session_state.rds_view_default = "WTFDA US State Intelligence"
+        
+    rds_view = st.pills("INTELLIGENCE DATA SOURCE", ["Logged RDS Data", "WTFDA RDS Intelligence", "WTFDA Station Intelligence", "WTFDA US State Intelligence", "WTFDA County Intelligence"], default=st.session_state.rds_view_default)
+    
+    if rds_view != st.session_state.rds_view_default:
+        st.session_state.rds_view_default = rds_view
     
     if rds_view == "Logged RDS Data":
         total_logs = len(filt_df)
