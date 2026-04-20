@@ -1669,7 +1669,7 @@ elif selected_page == "STATION & RDS IQ":
                 m_c, y_c = s_df[m_name_col].value_counts(), s_df[y_col].value_counts()
                 st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
                 st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Month</div><div class="stat-val" style="margin-top:0px;">{str(m_c.idxmax()).upper() if not m_c.empty else "N/A"}</div></div>', unsafe_allow_html=True)
-                st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax()} ({y_c.max()})</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax() if not y_c.empty else "N/A"}</div></div>', unsafe_allow_html=True)
                 
                 st.markdown('<div class="window-box">', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-label" style="color:{th_red}">Season Window</div>', unsafe_allow_html=True)
@@ -2218,6 +2218,17 @@ elif selected_page == "ATMOSPHERIC CORRELATION":
                     
             fig_dual.update_layout(template=plotly_tmpl, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=500, hovermode="x unified")
             fig_dual.update_yaxes(title_text="Total Logs", secondary_y=False)
+            
+            # --- DYNAMIC TIME-WARPING (Remove Off-Season Gaps) ---
+            d_min = pd.to_datetime(merged_df['Date_Obj'].min())
+            d_max = pd.to_datetime(merged_df['Date_Obj'].max())
+            all_d = pd.date_range(d_min, d_max)
+            # Filter for off-season months (Sept through April)
+            off_season = all_d[~all_d.month.isin([5, 6, 7, 8])]
+            
+            if not off_season.empty:
+                fig_dual.update_xaxes(rangebreaks=[dict(values=off_season.strftime("%Y-%m-%d").tolist())])
+                
             st.plotly_chart(fig_dual, use_container_width=True)
 
             st.markdown("---")
