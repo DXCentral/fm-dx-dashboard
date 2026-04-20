@@ -1669,7 +1669,7 @@ elif selected_page == "STATION & RDS IQ":
                 m_c, y_c = s_df[m_name_col].value_counts(), s_df[y_col].value_counts()
                 st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
                 st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Month</div><div class="stat-val" style="margin-top:0px;">{str(m_c.idxmax()).upper() if not m_c.empty else "N/A"}</div></div>', unsafe_allow_html=True)
-                st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax() if not y_c.empty else "N/A"}</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax()} ({y_c.max()})</div></div>', unsafe_allow_html=True)
                 
                 st.markdown('<div class="window-box">', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-label" style="color:{th_red}">Season Window</div>', unsafe_allow_html=True)
@@ -2190,7 +2190,7 @@ elif selected_page == "ATMOSPHERIC CORRELATION":
             
             fig_dual = make_subplots(specs=[[{"secondary_y": True}]])
             fig_dual.add_trace(
-                go.Bar(x=merged_df['Date_Obj'], y=merged_df['Logs'], name="Total Logs", marker_color=th_red, opacity=0.5),
+                go.Bar(x=merged_df['Date_Obj'], y=merged_df['Logs'], name="Total Logs", marker_color=th_red, opacity=0.95),
                 secondary_y=False
             )
             
@@ -2216,7 +2216,7 @@ elif selected_page == "ATMOSPHERIC CORRELATION":
                         fillcolor="red", opacity=0.2, layer="below", line_width=0
                     )
                     
-            fig_dual.update_layout(template=plotly_tmpl, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=500, hovermode="x unified")
+            fig_dual.update_layout(template=plotly_tmpl, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=750, hovermode="x unified")
             fig_dual.update_yaxes(title_text="Total Logs", secondary_y=False)
             
             # --- DYNAMIC TIME-WARPING (Remove Off-Season Gaps) ---
