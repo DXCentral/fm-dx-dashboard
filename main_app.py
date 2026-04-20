@@ -761,8 +761,18 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                 else:
                     logged_fips = []
                     
-                us_wtfda = wtfda_df_all[wtfda_df_all['Country'] == 'USA'].dropna(subset=['FIPS', 'County'])
+                us_wtfda = wtfda_df_all[wtfda_df_all['Country'] == 'USA'].dropna(subset=['FIPS', 'County']).copy()
+                
+                # --- DATA SHIELD FOR DUPLICATE FIPS ---
+                us_wtfda['County'] = us_wtfda['County'].astype(str).str.title().str.strip()
                 avail_counties = us_wtfda.groupby(['FIPS', 'County', 'S/P']).size().reset_index(name='Stations')
+                
+                # Force strictly unique FIPS to prevent Streamlit DuplicateKey errors from WTFDA typos
+                avail_counties = avail_counties.groupby('FIPS', as_index=False).agg({
+                    'County': 'first',
+                    'S/P': 'first',
+                    'Stations': 'sum'
+                })
                 
                 unheard = avail_counties[~avail_counties['FIPS'].isin(logged_fips)]
                 
@@ -781,8 +791,8 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                         
                         for idx, (_, row) in enumerate(sorted_state_data.iterrows()):
                             col_idx = idx % n_cols
-                            btn_label = f"{row['County'].title()} ({row['Stations']})"
-                            cols[col_idx].button(btn_label, key=f"uh_btn_{row['FIPS']}", on_click=jump_to_county, args=(row['FIPS'],), use_container_width=True)
+                            btn_label = f"{row['County']} ({row['Stations']})"
+                            cols[col_idx].button(btn_label, key=f"uh_btn_{row['FIPS']}_{idx}", on_click=jump_to_county, args=(row['FIPS'],), use_container_width=True)
 
     else:
         if gv == "US States": target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
@@ -1632,7 +1642,7 @@ elif selected_page == "STATION & RDS IQ":
                 m_c, y_c = s_df[m_name_col].value_counts(), s_df[y_col].value_counts()
                 st.markdown('<div class="stat-header">PEAK SEASONALITY</div>', unsafe_allow_html=True)
                 st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Month</div><div class="stat-val" style="margin-top:0px;">{str(m_c.idxmax()).upper() if not m_c.empty else "N/A"}</div></div>', unsafe_allow_html=True)
-                st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax() if not y_c.empty else "N/A"}</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="margin-bottom: 10px;"><div class="stat-label">Peak Year</div><div class="stat-val" style="margin-top:0px;">{y_c.idxmax()} ({y_c.max()})</div></div>', unsafe_allow_html=True)
                 
                 st.markdown('<div class="window-box">', unsafe_allow_html=True)
                 st.markdown(f'<div class="stat-label" style="color:{th_red}">Season Window</div>', unsafe_allow_html=True)
