@@ -587,7 +587,7 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                         st.rerun()
                         
             pulse_data = geo_df.groupby(['Local_Month', dd_col]).size().reset_index(name='Logs')
-            fig_pulse = px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', color_discrete_sequence=['#D32F2F', '#FFA500', '#FFFFFF', '#888888'], template=plotly_tmpl)
+            fig_pulse = px.area(pulse_data, x='Local_Month', y='Logs', color=dd_col, groupnorm='percent', line_shape='spline', color_discrete_sequence=[th_red, th_orange, th_text, th_gray], template=plotly_tmpl)
             st.plotly_chart(fig_pulse, use_container_width=True)
             
         if st.session_state.selected_tier:
@@ -706,8 +706,8 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
 
             # --- TARGET LIST FOR UNHEARD COUNTIES ---
             st.markdown("---")
-            st.markdown(f"<h3 style='color: {th_red};'>🎯 UNHEARD COUNTY HIT LIST</h3>", unsafe_allow_html=True)
-            st.caption("Counties with active FM transmitters that have never been logged in the current dataset.")
+            st.markdown(f"<h3 style='color: {th_red}; text-align: center; letter-spacing: 2px;'>🎯 UNHEARD COUNTY HIT LIST</h3>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; color: {th_gray}; margin-bottom: 30px;'>Counties with active FM transmitters that have never been logged in the current dataset.</div>", unsafe_allow_html=True)
             
             wtfda_df_all = load_wtfda_data()
             if not wtfda_df_all.empty and 'FIPS' in wtfda_df_all.columns:
@@ -721,12 +721,21 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     st.success("100% Penetration! Every county with a transmitter has been logged.")
                 else:
                     unheard_by_state = unheard.groupby('S/P')
-                    with st.expander("VIEW UNHEARD COUNTIES BY STATE", expanded=False):
-                        for state, state_data in sorted(unheard_by_state):
-                            sorted_state_data = state_data.sort_values('County')
-                            county_list_strs = [f"{row['County'].title()} ({row['Stations']})" for _, row in sorted_state_data.iterrows()]
-                            state_str = f"**{state} ({len(sorted_state_data)})**: " + ", ".join(county_list_strs)
-                            st.markdown(state_str)
+                    for state, state_data in sorted(unheard_by_state):
+                        sorted_state_data = state_data.sort_values('County')
+                        
+                        st.markdown(f'<div class="stat-header" style="border-bottom: 1px solid {th_red}; font-size: 1.1rem; margin-top: 25px;">{state} <span style="color: {th_gray}; font-size: 0.9rem;">({len(sorted_state_data)} COUNTIES)</span></div>', unsafe_allow_html=True)
+                        
+                        county_list_strs = [f"<span style='color:{th_text};'>{row['County'].title()}</span> <span style='color:{th_yellow};'>({row['Stations']})</span>" for _, row in sorted_state_data.iterrows()]
+                        
+                        n_cols = 4
+                        chunk_size = (len(county_list_strs) + n_cols - 1) // n_cols
+                        cols = st.columns(n_cols)
+                        
+                        for i in range(n_cols):
+                            chunk = county_list_strs[i*chunk_size : (i+1)*chunk_size]
+                            if chunk:
+                                cols[i].markdown(f"<div style='line-height: 1.6; font-size: 0.9rem;'>{'<br>'.join(chunk)}</div>", unsafe_allow_html=True)
 
     else:
         if gv == "US States": target, scope, loc_mode, gj_url, gj_key = 'USA', 'usa', 'USA-states', None, None
