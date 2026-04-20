@@ -5,6 +5,7 @@ import time
 import datetime
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import numpy as np
 import re
 from google.cloud import bigquery
@@ -86,6 +87,8 @@ if 'freq_direct_entry' not in st.session_state:
     st.session_state.freq_direct_entry = ""
 if 'muf_tactical_date' not in st.session_state:
     st.session_state.muf_tactical_date = None
+if 'solar_overlay_mode' not in st.session_state:
+    st.session_state.solar_overlay_mode = "SFI (10.7cm Radio Flux)"
 
 # Teleport Engine Variables
 if 'nav_idx' not in st.session_state:
@@ -337,8 +340,32 @@ def load_wtfda_data():
         st.error(f"WTFDA Load Error: {e}")
         return pd.DataFrame()
 
+# 2c. DATA LOADING (SPACE WEATHER ENGINE)
+@st.cache_data(ttl=43200)
+def load_solar_data():
+    try:
+        # Attempt to pull directly from BigQuery first
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        scopes = ["https://www.googleapis.com/auth/bigquery", "https://www.googleapis.com/auth/drive.readonly"]
+        credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        client = bigquery.Client(credentials=credentials, project=credentials.project_id)
+        
+        df_s = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.solar_data_master`").to_dataframe()
+        df_s['Date_Obj'] = pd.to_datetime(df_s['Date_Str']).dt.date
+        return df_s
+    except Exception as e:
+        # Fallback to local CSV if uploaded to the repo directly
+        try:
+            df_s = pd.read_csv("sedap_solar_clean.csv")
+            df_s['Date_Obj'] = pd.to_datetime(df_s['Date_Str']).dt.date
+            return df_s
+        except:
+            st.error(f"Space Weather Database Offline: Could not locate BigQuery table or local sedap_solar_clean.csv")
+            return pd.DataFrame()
+
 # 3. SIDEBAR NAVIGATION ENGINE
-pages = ["WELCOME", "DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ"]
+pages = ["WELCOME", "DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ", "ATMOSPHERIC CORRELATION"]
 
 if st.session_state.jump_to_rds:
     st.session_state.nav_idx = pages.index("STATION & RDS IQ")
@@ -351,7 +378,7 @@ with st.sidebar:
     selected_page = option_menu(
         "DATA MODULES", 
         pages, 
-        icons=["broadcast", "house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin"], 
+        icons=["broadcast", "house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin", "sun"], 
         default_index=st.session_state.nav_idx,
         key=f"nav_menu_{st.session_state.reset_count}_{st.session_state.nav_idx}"
     )
@@ -484,7 +511,7 @@ if selected_page == "WELCOME":
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; color: #888;">
-    This is version 2.0 of our Es Data Dashboard and we are just getting started. We are already planning the next data components we want to add, new data sources to add to our logging data, expanding beyond just the traditional FM season and more! Make sure to bookmark this site and check back often!<br><br>
+    This is version 3.0 of our Es Data Dashboard. We are already planning the next data components we want to add, new data sources to add to our logging data, expanding beyond just the traditional FM season and more! Make sure to bookmark this site and check back often!<br><br>
     Thank you and best of DX!<br>
     <span style="color: #D32F2F; font-weight: bold;">Loyd Van Horn</span><br>
     DX Central<br>
@@ -2133,3 +2160,120 @@ elif selected_page == "STATION & RDS IQ":
                         st.dataframe(unheard_df[['Target']], height=300, hide_index=True, use_container_width=True)
                     else:
                         st.success(f"100% Penetration! Every station in this {c_type.lower()} has been logged.")
+
+# 13. MODULE 8: ATMOSPHERIC CORRELATION
+elif selected_page == "ATMOSPHERIC CORRELATION":
+    st.markdown(f"<h1 style='text-align: center; color: {th_red};'>ATMOSPHERIC CORRELATION</h1>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    solar_df = load_solar_data()
+    if solar_df.empty:
+        st.warning("🚨 **Space Weather Database Offline**")
+        st.markdown("We could not locate the `solar_data_master` table in BigQuery or the local `sedap_solar_clean.csv` fallback file. Please ensure the data is uploaded correctly.")
+    else:
+        # Prepare Data Merge
+        daily_logs = filt_df.groupby('Date_Obj').size().reset_index(name='Logs')
+        
+        # Perform the Inner Join matching FM logs to Space Weather by Date
+        merged_df = pd.merge(daily_logs, solar_df, on='Date_Obj', how='inner').sort_values('Date_Obj')
+        
+        if merged_df.empty:
+            st.warning("No overlapping dates found between the active filters and the Space Weather database.")
+        else:
+            # -------------------------------------------------------------
+            # DUAL-AXIS TEMPORAL OVERLAY
+            # -------------------------------------------------------------
+            st.markdown("### 🔭 DUAL-AXIS TEMPORAL OVERLAY")
+            st.caption("Compare your filtered log volume directly against space weather indices over time.")
+            
+            overlay_metric = st.radio("Select Overlay Metric:", ["SFI (10.7cm Radio Flux)", "Kp-Index (Geomagnetic Storming)"], horizontal=True)
+            
+            fig_dual = make_subplots(specs=[[{"secondary_y": True}]])
+            fig_dual.add_trace(
+                go.Bar(x=merged_df['Date_Obj'], y=merged_df['Logs'], name="Total Logs", marker_color=th_red, opacity=0.5),
+                secondary_y=False
+            )
+            
+            if overlay_metric == "SFI (10.7cm Radio Flux)":
+                fig_dual.add_trace(
+                    go.Scatter(x=merged_df['Date_Obj'], y=merged_df['F107_Obs'], name="Solar Flux (SFI)", mode='lines', line=dict(color=th_yellow, width=2)),
+                    secondary_y=True
+                )
+                fig_dual.update_yaxes(title_text="Solar Flux Index (SFI)", secondary_y=True, showgrid=False)
+            else:
+                fig_dual.add_trace(
+                    go.Scatter(x=merged_df['Date_Obj'], y=merged_df['Kp_Max'], name="Max Kp-Index", mode='lines', line=dict(color=th_blue, width=2)),
+                    secondary_y=True
+                )
+                fig_dual.update_yaxes(title_text="Maximum Kp-Index", secondary_y=True, showgrid=False, range=[0, 9])
+                
+                # Earmark Storm Zones (Kp >= 5)
+                storm_days = merged_df[merged_df['Kp_Max'] >= 5]['Date_Obj']
+                for storm_day in storm_days:
+                    fig_dual.add_vrect(
+                        x0=storm_day - datetime.timedelta(hours=12), 
+                        x1=storm_day + datetime.timedelta(hours=12), 
+                        fillcolor="red", opacity=0.2, layer="below", line_width=0
+                    )
+                    
+            fig_dual.update_layout(template=plotly_tmpl, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=500, hovermode="x unified")
+            fig_dual.update_yaxes(title_text="Total Logs", secondary_y=False)
+            st.plotly_chart(fig_dual, use_container_width=True)
+
+            st.markdown("---")
+            
+            # -------------------------------------------------------------
+            # CORRELATION SCATTER MATRIX
+            # -------------------------------------------------------------
+            c1, c2 = st.columns(2)
+            
+            with c1:
+                st.markdown("### ⚛️ PHYSICS SCATTER MATRIX")
+                st.caption("Does Sporadic Es prefer a quiet or active sun? Each dot represents a single day.")
+                
+                fig_scatter = px.scatter(
+                    merged_df.dropna(subset=['F107_Obs', 'Kp_Max']), 
+                    x='F107_Obs', y='Logs', color='Kp_Max', 
+                    hover_data=['Date_Obj'],
+                    color_continuous_scale='Turbo', 
+                    template=plotly_tmpl,
+                    labels={"F107_Obs": "Solar Flux Index (SFI)", "Logs": "Logs per Day", "Kp_Max": "Max Kp"}
+                )
+                fig_scatter.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=450)
+                st.plotly_chart(fig_scatter, use_container_width=True)
+                
+            # -------------------------------------------------------------
+            # SWEET SPOT RADAR
+            # -------------------------------------------------------------
+            with c2:
+                st.markdown("### 🎯 THE SWEET SPOT RADAR")
+                st.caption("Probability mapping of log occurrence across the A-Index vs. SFI grid.")
+                
+                # Clean dropna for math
+                hm_df = merged_df.dropna(subset=['F107_Obs', 'Ap']).copy()
+                
+                # Create Bins
+                hm_df['SFI_Bin'] = pd.cut(hm_df['F107_Obs'], bins=[0, 75, 100, 150, 200, 999], labels=['<75', '75-100', '100-150', '150-200', '200+'])
+                hm_df['Ap_Bin'] = pd.cut(hm_df['Ap'], bins=[-1, 5, 10, 20, 40, 999], labels=['0-5 (Quiet)', '6-10 (Unsettled)', '11-20 (Active)', '21-40 (Minor Storm)', '40+ (Major Storm)'])
+                
+                # Calculate average logs per day for that specific weather grid combo
+                heat_pivot = hm_df.pivot_table(index='Ap_Bin', columns='SFI_Bin', values='Logs', aggfunc='mean').fillna(0)
+                
+                # Reorder index to put quiet weather at the bottom
+                heat_pivot = heat_pivot.reindex(['40+ (Major Storm)', '21-40 (Minor Storm)', '11-20 (Active)', '6-10 (Unsettled)', '0-5 (Quiet)'])
+                
+                # Format to integers for readability
+                heat_text = heat_pivot.round(0).astype(int).astype(str)
+                heat_text[heat_pivot == 0] = ""
+                
+                fig_heat = px.imshow(
+                    heat_pivot, 
+                    text_auto=False, 
+                    color_continuous_scale=global_color_scale, 
+                    template=plotly_tmpl, 
+                    aspect="auto",
+                    labels=dict(x="Solar Flux Index (SFI)", y="Planetary A-Index (Ap)", color="Avg Logs/Day")
+                )
+                fig_heat.update_traces(text=heat_text.values, texttemplate="%{text}")
+                fig_heat.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=450, coloraxis_showscale=False)
+                st.plotly_chart(fig_heat, use_container_width=True)
