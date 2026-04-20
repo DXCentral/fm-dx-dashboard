@@ -240,6 +240,10 @@ def load_data():
         df = df_logs.merge(master_map, left_on='join_dx', right_on='Loc', how='left').rename(columns={'Lat': 'DX_Lat', 'Lon': 'DX_Lon', 'County': 'DXer_County', 'FIPS': 'FIPS_DXer'}).drop(columns=['Loc'])
         df = df.merge(master_map, left_on='join_st', right_on='Loc', how='left').rename(columns={'Lat': 'ST_Lat', 'Lon': 'ST_Lon', 'County': 'County', 'FIPS': 'FIPS'}).drop(columns=['Loc'])
 
+        # Data Correction Shield: Force St. Tammany logs into LA if misattributed
+        if 'County' in df.columns and 'State' in df.columns:
+            df.loc[df['County'] == 'St. Tammany', 'State'] = 'LA'
+
         for c in ['DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', 'Mid_Lat', 'Mid_Long']:
             if c in df.columns: 
                 df[c] = pd.to_numeric(df[c].astype(str).str.replace('°', '').str.strip(), errors='coerce').astype('float32')
@@ -305,6 +309,10 @@ def load_wtfda_data():
             'Call_Letters': 'Call Letters'
         }
         df_w = df_w.rename(columns=col_mapping)
+
+        # Data Correction Shield: Force St. Tammany transmitters into LA
+        if 'County' in df_w.columns and 'S/P' in df_w.columns:
+            df_w.loc[df_w['County'] == 'St. Tammany', 'S/P'] = 'LA'
 
         df_w = df_w[df_w['Country'].isin(['USA', 'CAN', 'MEX', 'Canada', 'Mexico'])]
         df_w['Country'] = df_w['Country'].replace({'CAN': 'Canada', 'MEX': 'Mexico'})
@@ -447,7 +455,7 @@ if selected_page == "WELCOME":
         
         To our knowledge, this represents the first widespread and collective analysis of Sporadic Es logs from a large enough sample size to be able to spot trends and provide what we hope is a directionally accurate analysis.<br><br>
         
-        We hope it helps provide insight for you not only into the historical performance of Sporadic Es seasons, but show you what is possible from your location, or in any given season. We cant predict Sporadic Es (yet!) but maybe we can at least shine some light on how a typical season behaves and unfolds.
+        We hope it helps provide insight for you not only into the historical performance of Sporadic Es seasons, but show you what is possible from your location, or in any given season. We can't predict Sporadic Es (yet!) but maybe we can at least shine some light on how a typical season behaves and unfolds.
         </div>
         """, unsafe_allow_html=True)
         
@@ -655,9 +663,10 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
         else:
             col_m, col_f = st.columns([3, 1]) if st.session_state.selected_logged_county else st.columns([1, 0.001])
             with col_m:
-                county_df = geo_df[geo_df['Country'] == 'USA'].dropna(subset=['FIPS', 'County'])
-                counts = county_df.groupby(['FIPS', 'County', 'State']).size().reset_index(name='Logs')
-                counts['Hover_Name'] = counts['County'] + " County, " + counts['State']
+                county_df = geo_df[geo_df['Country'] == 'USA'].dropna(subset=['FIPS', 'County']).copy()
+                county_df['Type'] = np.where(county_df['State'] == 'LA', ' Parish, ', ' County, ')
+                counts = county_df.groupby(['FIPS', 'County', 'State', 'Type']).size().reset_index(name='Logs')
+                counts['Hover_Name'] = counts['County'] + counts['Type'] + counts['State']
                 
                 fig = px.choropleth(counts, geojson='https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json', locations='FIPS', color='Logs', scope='usa', color_continuous_scale=global_color_scale, hover_name='Hover_Name', template=plotly_tmpl)
                 fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor=th_bg), margin={"r":0,"t":0,"l":0,"b":0}, height=750)
@@ -674,14 +683,25 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     fips_target = st.session_state.selected_logged_county
                     c_data = county_df[county_df['FIPS'] == fips_target]
                     c_name = c_data['County'].iloc[0] if not c_data.empty else "Unknown"
-                    sel = c_name
+                    c_state = c_data['State'].iloc[0] if not c_data.empty else "XX"
+                    c_type = "PARISH" if c_state == 'LA' else "COUNTY"
                     
-                    st.markdown(f"### {c_name.upper()} COUNTY INTEL")
+                    st.markdown(f"### {c_name.upper()} {c_type} INTEL")
                     if st.button("❌ CLEAR SELECTION", key="cl_c_map", use_container_width=True): 
                         st.session_state.selected_logged_county = None
                         st.session_state.logged_county_map_key += 1
                         st.rerun()
                         
+                    # --- TARGET LOCK MINIMAP ---
+                    st.markdown('<div class="stat-header">TARGET LOCK MINIMAP</div>', unsafe_allow_html=True)
+                    state_map_df = county_df[county_df['State'] == c_state].dropna(subset=['FIPS']).groupby('FIPS').size().reset_index(name='Logs')
+                    state_map_df['Highlight'] = np.where(state_map_df['FIPS'] == fips_target, 'Target', 'Other')
+                    
+                    fig_mini = px.choropleth(state_map_df, geojson='https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json', locations='FIPS', color='Highlight', color_discrete_map={'Target': th_red, 'Other': th_panel})
+                    fig_mini.update_geos(fitbounds="locations", visible=False)
+                    fig_mini.update_layout(showlegend=False, margin={"r":0,"t":10,"l":0,"b":10}, height=200, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                    st.plotly_chart(fig_mini, use_container_width=True)
+
                     s_of = c_data
                     s_fr = geo_df[geo_df['FIPS_DXer'] == fips_target] if 'FIPS_DXer' in geo_df.columns else pd.DataFrame()
                         
@@ -732,11 +752,15 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
             # --- TARGET LIST FOR UNHEARD COUNTIES ---
             st.markdown("---")
             st.markdown(f"<h3 style='color: {th_red}; text-align: center; letter-spacing: 2px;'>🎯 UNHEARD COUNTY HIT LIST</h3>", unsafe_allow_html=True)
-            st.markdown(f"<div style='text-align: center; color: {th_gray}; margin-bottom: 30px;'>Counties with active FM transmitters that have never been logged in the current dataset.<br>Click any county below to immediately view its available targets.</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; color: {th_gray}; margin-bottom: 30px;'>Counties with active FM transmitters that have never been logged in the current dataset.<br>Click any target below to instantly teleport to its WTFDA Intelligence Report.</div>", unsafe_allow_html=True)
             
             wtfda_df_all = load_wtfda_data()
             if not wtfda_df_all.empty and 'FIPS' in wtfda_df_all.columns:
-                logged_fips = county_df['FIPS'].unique().tolist()
+                if 'FIPS' in county_df.columns:
+                    logged_fips = county_df['FIPS'].unique().tolist()
+                else:
+                    logged_fips = []
+                    
                 us_wtfda = wtfda_df_all[wtfda_df_all['Country'] == 'USA'].dropna(subset=['FIPS', 'County'])
                 avail_counties = us_wtfda.groupby(['FIPS', 'County', 'S/P']).size().reset_index(name='Stations')
                 
@@ -748,8 +772,9 @@ elif selected_page == "GEOGRAPHIC ANALYSIS":
                     unheard_by_state = unheard.groupby('S/P')
                     for state, state_data in sorted(unheard_by_state):
                         sorted_state_data = state_data.sort_values('County')
+                        l_type = "PARISHES" if state == 'LA' else "COUNTIES"
                         
-                        st.markdown(f'<div class="stat-header" style="border-bottom: 1px solid {th_red}; font-size: 1.1rem; margin-top: 25px; margin-bottom: 15px;">{state} <span style="color: {th_gray}; font-size: 0.9rem;">({len(sorted_state_data)} COUNTIES)</span></div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="stat-header" style="border-bottom: 1px solid {th_red}; font-size: 1.1rem; margin-top: 25px; margin-bottom: 15px;">{state} <span style="color: {th_gray}; font-size: 0.9rem;">({len(sorted_state_data)} {l_type})</span></div>', unsafe_allow_html=True)
                         
                         n_cols = 4
                         cols = st.columns(n_cols)
@@ -2011,7 +2036,8 @@ elif selected_page == "STATION & RDS IQ":
             
             with col_wc_m:
                 county_counts = wtfda_df.dropna(subset=['FIPS', 'County']).groupby(['FIPS', 'County', 'S/P']).size().reset_index(name='Stations')
-                county_counts['Hover_Name'] = county_counts['County'] + " County, " + county_counts['S/P']
+                county_counts['Type'] = np.where(county_counts['S/P'] == 'LA', ' Parish, ', ' County, ')
+                county_counts['Hover_Name'] = county_counts['County'] + county_counts['Type'] + county_counts['S/P']
                 
                 fig_w_county = px.choropleth(county_counts, geojson='https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json', locations='FIPS', color='Stations', scope='usa', color_continuous_scale=global_color_scale, hover_name='Hover_Name', template=plotly_tmpl)
                 fig_w_county.update_layout(paper_bgcolor='rgba(0,0,0,0)', geo=dict(bgcolor='rgba(0,0,0,0)', lakecolor=th_bg), margin={"r":0,"t":0,"l":0,"b":0}, height=750)
@@ -2028,15 +2054,27 @@ elif selected_page == "STATION & RDS IQ":
                     sel_fips = st.session_state.selected_wtfda_county_intel
                     s_intel_df = wtfda_df[wtfda_df['FIPS'] == sel_fips].copy()
                     c_name = s_intel_df['County'].iloc[0] if not s_intel_df.empty else "Unknown"
+                    c_state = s_intel_df['S/P'].iloc[0] if not s_intel_df.empty else "XX"
+                    c_type = "PARISH" if c_state == 'LA' else "COUNTY"
                     
-                    st.markdown(f"### {c_name.upper()} TARGET INTEL")
+                    st.markdown(f"### {c_name.upper()} {c_type} TARGET INTEL")
                     if st.button("❌ CLEAR SELECTION", key="cl_wc_map", use_container_width=True): 
                         st.session_state.selected_wtfda_county_intel = None
                         st.session_state.wtfda_county_intel_map_key += 1
                         st.rerun()
                         
+                    # --- TARGET LOCK MINIMAP ---
+                    st.markdown('<div class="stat-header">TARGET LOCK MINIMAP</div>', unsafe_allow_html=True)
+                    state_map_df = wtfda_df[wtfda_df['S/P'] == c_state].dropna(subset=['FIPS']).groupby('FIPS').size().reset_index(name='Stations')
+                    state_map_df['Highlight'] = np.where(state_map_df['FIPS'] == sel_fips, 'Target', 'Other')
+                    
+                    fig_mini = px.choropleth(state_map_df, geojson='https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json', locations='FIPS', color='Highlight', color_discrete_map={'Target': th_red, 'Other': th_panel})
+                    fig_mini.update_geos(fitbounds="locations", visible=False)
+                    fig_mini.update_layout(showlegend=False, margin={"r":0,"t":10,"l":0,"b":10}, height=200, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                    st.plotly_chart(fig_mini, use_container_width=True)
+
                     total_avail = len(s_intel_df)
-                    st.markdown('<div class="stat-header">TOTAL STATIONS IN COUNTY</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stat-header">TOTAL STATIONS IN {c_type}</div>', unsafe_allow_html=True)
                     st.markdown(f'<div class="stat-val">{total_avail:,}</div>', unsafe_allow_html=True)
                     
                     # LOGGED VS AVAILABLE MATH
@@ -2084,4 +2122,4 @@ elif selected_page == "STATION & RDS IQ":
                         unheard_df['Target'] = unheard_df['Frequency'].astype(str) + " - " + unheard_df['Callsign'] + " - " + unheard_df['City']
                         st.dataframe(unheard_df[['Target']], height=300, hide_index=True, use_container_width=True)
                     else:
-                        st.success("100% Penetration! Every station in this county has been logged.")
+                        st.success(f"100% Penetration! Every station in this {c_type.lower()} has been logged.")
