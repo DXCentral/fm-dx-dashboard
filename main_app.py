@@ -364,8 +364,31 @@ def load_solar_data():
             st.error(f"Space Weather Database Offline: Could not locate BigQuery table or local sedap_solar_clean.csv")
             return pd.DataFrame()
 
+# 2d. DATA LOADING (WSPR ENGINE)
+@st.cache_data(ttl=43200)
+def load_wspr_data():
+    try:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        scopes = ["https://www.googleapis.com/auth/bigquery", "https://www.googleapis.com/auth/drive.readonly"]
+        credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        client = bigquery.Client(credentials=credentials, project=credentials.project_id)
+        
+        df_w = client.query("SELECT * FROM `sporadic-es-data-analysis.FMList_Data.wspr_clouds_master`").to_dataframe()
+        df_w['Date_Obj'] = pd.to_datetime(df_w['Date']).dt.date
+        df_w['Time_Str'] = df_w['Time_UTC'].astype(str).str[:5]
+        return df_w
+    except Exception as e:
+        try:
+            df_w = pd.read_csv("sedap_wspr_clouds.csv")
+            df_w['Date_Obj'] = pd.to_datetime(df_w['Date']).dt.date
+            df_w['Time_Str'] = df_w['Time_UTC'].astype(str).str[:5]
+            return df_w
+        except:
+            return pd.DataFrame()
+
 # 3. SIDEBAR NAVIGATION ENGINE
-pages = ["WELCOME", "DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ", "ATMOSPHERIC CORRELATION"]
+pages = ["WELCOME", "DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ", "ATMOSPHERIC CORRELATION", "6M WSPR INTELLIGENCE"]
 
 if st.session_state.jump_to_rds:
     st.session_state.nav_idx = pages.index("STATION & RDS IQ")
@@ -378,7 +401,7 @@ with st.sidebar:
     selected_page = option_menu(
         "DATA MODULES", 
         pages, 
-        icons=["broadcast", "house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin", "sun"], 
+        icons=["broadcast", "house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin", "sun", "radar"], 
         default_index=st.session_state.nav_idx,
         key=f"nav_menu_{st.session_state.reset_count}_{st.session_state.nav_idx}"
     )
@@ -2288,3 +2311,95 @@ elif selected_page == "ATMOSPHERIC CORRELATION":
                 fig_heat.update_traces(text=heat_text.values, texttemplate="%{text}")
                 fig_heat.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=450, coloraxis_showscale=False)
                 st.plotly_chart(fig_heat, use_container_width=True)
+
+# 14. MODULE 9: 6M WSPR INTELLIGENCE (NEW)
+elif selected_page == "6M WSPR INTELLIGENCE":
+    st.markdown(f"<h1 style='text-align: center; color: {th_red};'>6M WSPR CLOUD TRACKER (50 MHz)</h1>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    wspr_df = load_wspr_data()
+    
+    if wspr_df.empty:
+        st.warning("🚨 **WSPR Database Offline**")
+        st.markdown("We could not locate the `wspr_clouds_master` table in BigQuery or the local `sedap_wspr_clouds.csv` fallback file. Please ensure the exact file is uploaded and available.")
+    else:
+        w1, w2, w3, w4 = st.columns(4)
+        w1.metric("Total 50 MHz Clouds Mapped", f"{len(wspr_df):,}")
+        w2.metric("Active 6m Days", f"{wspr_df['Date_Obj'].nunique():,}")
+        w3.metric("Furthest WSPR Path", f"{wspr_df['Distance_mi'].max():,.0f} mi")
+        w4.metric("Avg Hop Distance", f"{wspr_df['Distance_mi'].mean():,.0f} mi")
+        
+        st.markdown("### 📡 50 MHz IONOSPHERIC RADAR")
+        st.caption("Select a date to track the exact geographic formation of 50 MHz Sporadic E clouds. Data is natively displayed in UTC.")
+        
+        avail_wspr_days = sorted(wspr_df['Date_Obj'].unique())
+        # Try to default to the mega-day we found earlier, otherwise just use the last available day
+        target_default = datetime.date(2022, 6, 19)
+        default_day = target_default if target_default in avail_wspr_days else avail_wspr_days[-1]
+        
+        col_map, col_ctrl = st.columns([3, 1])
+        
+        with col_ctrl:
+            wspr_date = st.date_input("Select Event Date", value=default_day, min_value=avail_wspr_days[0], max_value=avail_wspr_days[-1])
+            day_wspr = wspr_df[wspr_df['Date_Obj'] == wspr_date].copy()
+            
+            if day_wspr.empty:
+                st.warning("No WSPR clouds mapped on this date.")
+            else:
+                day_wspr = day_wspr.sort_values('Time_Str')
+                times_only = sorted(day_wspr['Time_Str'].dropna().unique())
+                w_time = st.select_slider("Time Control (UTC)", options=["SHOW ALL"] + times_only, value="SHOW ALL")
+                
+                st.markdown('<div class="stat-header">HOP CLASSIFICATION</div>', unsafe_allow_html=True)
+                if 'Hop_Type' in day_wspr.columns:
+                    hop_counts = day_wspr['Hop_Type'].value_counts().reset_index(name='Clouds').rename(columns={'Hop_Type': 'Type'})
+                    st.dataframe(hop_counts, hide_index=True, use_container_width=True)
+                    
+                st.markdown('<div class="stat-header">CLOUDS TRACKED THIS DAY</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stat-val">{len(day_wspr):,}</div>', unsafe_allow_html=True)
+
+        with col_map:
+            if not day_wspr.empty:
+                if w_time == "SHOW ALL":
+                    render_w = day_wspr
+                    st.markdown(f"**Viewing All Clouds on {wspr_date.strftime('%b %d, %Y')}**")
+                else:
+                    # Show clouds within a 1-hour rolling window of the selected time
+                    lookback_time_w = (datetime.datetime.strptime(w_time, '%H:%M') - datetime.timedelta(minutes=60)).strftime('%H:%M')
+                    render_w = day_wspr[(day_wspr['Time_Str'] <= w_time) & (day_wspr['Time_Str'] >= lookback_time_w)]
+                    st.markdown(f"**Viewing Clouds from {lookback_time_w} to {w_time} UTC**")
+                    
+                if 'Cloud_Lat' in render_w.columns and 'Cloud_Lon' in render_w.columns:
+                    layer_w = pdk.Layer(
+                        'HeatmapLayer',
+                        data=render_w[['Cloud_Lon', 'Cloud_Lat']].dropna(),
+                        get_position='[Cloud_Lon, Cloud_Lat]',
+                        radius_pixels=50, intensity=2.0, threshold=0.03,
+                        color_range=[[183, 28, 28, 60], [211, 47, 47, 150], [244, 67, 54, 200], [255, 235, 238, 230], [255, 255, 255, 255]]
+                    )
+                    st.pydeck_chart(pdk.Deck(map_style=map_style_url, initial_view_state=pdk.ViewState(latitude=38, longitude=-95, zoom=3.4), layers=[layer_w]))
+                else:
+                    st.error("Missing Cloud_Lat or Cloud_Lon columns in the WSPR dataset.")
+
+        st.markdown("---")
+        st.markdown("### 🧬 THE OVERLAP: 50 MHz vs 100+ MHz")
+        st.caption("Which days had both a massive 50 MHz WSPR cloud formation AND explosive 100+ MHz broadcast logs? This scatter plot automatically cross-references your FM filters against the WSPR database.")
+        
+        # Overlap Logic built directly into pandas
+        fm_daily = filt_df.groupby('Date_Obj').size().reset_index(name='FM_Logs')
+        wspr_daily = wspr_df.groupby('Date_Obj').size().reset_index(name='WSPR_Clouds')
+        
+        overlap_df = pd.merge(fm_daily, wspr_daily, on='Date_Obj', how='inner')
+        overlap_df['Intensity_Score'] = overlap_df['FM_Logs'] * overlap_df['WSPR_Clouds']
+        overlap_df = overlap_df.sort_values('Intensity_Score', ascending=False)
+        
+        if not overlap_df.empty:
+            fig_over = px.scatter(
+                overlap_df, x='WSPR_Clouds', y='FM_Logs', size='Intensity_Score', color='Intensity_Score',
+                hover_name='Date_Obj', text='Date_Obj', template=plotly_tmpl, color_continuous_scale='Turbo'
+            )
+            fig_over.update_traces(textposition='top center')
+            fig_over.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="Total 6m WSPR Clouds", yaxis_title="Filtered FM Broadcast Logs", height=500)
+            st.plotly_chart(fig_over, use_container_width=True)
+        else:
+            st.info("No overlapping dates found between the WSPR dataset and the current FM Log filters.")
