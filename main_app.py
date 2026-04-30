@@ -13,6 +13,9 @@ from google.oauth2 import service_account
 # 1. THEME & UI STYLING
 st.set_page_config(layout="wide", page_title="SEDAP Control Center")
 
+# PERSISTENT OS-LEVEL WATERMARK
+st.markdown('<div class="persistent-watermark">SEDAP BY DX CENTRAL | FMDXDATA.COM</div>', unsafe_allow_html=True)
+
 # EXPLICIT SESSION STATE INITIALIZATION (LOCKED)
 if 'full_screen' not in st.session_state: 
     st.session_state.full_screen = False
@@ -129,10 +132,31 @@ css = """
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
 
 html, body, [class*="st-"] { font-family: 'Oswald', sans-serif !important; background-color: VAR_BG; color: VAR_TEXT; font-weight: 300; }
+
+/* OS-LEVEL PERSISTENT WATERMARK */
+.persistent-watermark {
+    position: fixed;
+    bottom: 10px;
+    right: 15px;
+    color: #FFFFFF;
+    opacity: 0.25;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1rem;
+    z-index: 9999;
+    pointer-events: none;
+    letter-spacing: 2px;
+}
+
+/* MAP CONTAINER HEIGHT REFINEMENT */
 [data-testid="stDeckGlJsonChart"] { height: 1500px !important; }
+
+/* HIDE SIDEBAR COLLAPSE ARROW */
 [data-testid="collapsedControl"] { display: none !important; }
+
+/* VIRTUAL SDR LCD STYLING */
 .lcd-screen { background-color: #a3c2c2; color: #002244; font-family: 'Share Tech Mono', monospace; font-size: 4.5rem; font-weight: bold; text-align: center; padding: 10px; border-radius: 8px; border: 4px solid #222; box-shadow: inset 0px 0px 15px rgba(0,0,0,0.6); line-height: 1.1; margin-bottom: 10px; }
 .lcd-unit { font-size: 1.8rem; color: #003366; }
+
 div.stButton > button { background-color: VAR_BG !important; color: VAR_TEXT !important; border: 1px solid VAR_BORDER !important; border-radius: 25px !important; padding: 8px 25px !important; text-transform: uppercase; font-family: 'Oswald', sans-serif !important; letter-spacing: 1px; }
 div.stButton > button:hover { border-color: VAR_RED !important; color: VAR_RED !important; }
 div[data-testid="stPills"] button[aria-checked="true"] { border: 2px solid VAR_RED !important; background-color: VAR_BG !important; color: VAR_TEXT !important; }
@@ -146,7 +170,7 @@ h1, h2, h3, h4 { color: VAR_RED !important; text-transform: uppercase; letter-sp
 .stat-val { font-size: 1.3rem; color: VAR_TEXT; font-weight: 300; margin-top: 5px;}
 .stat-label { font-size: 0.75rem; color: VAR_GRAY; text-transform: uppercase; margin-bottom: 8px; line-height: 1.2; }
 .window-box { border-left: 2px solid VAR_RED; padding-left: 10px; margin-bottom: 15px; }
-.welcome-text { font-size: 1.2rem; line-height: 1.6; color: VAR_TEXT; font-weight: 300; }
+.welcome-text { font-size: 1.1rem; line-height: 1.6; color: VAR_TEXT; font-weight: 300; }
 .welcome-highlight { color: VAR_ORANGE; font-weight: 400; }
 </style>
 """
@@ -179,7 +203,9 @@ def clean_station_slogan(text):
     if pd.isna(text) or str(text).strip() == '': 
         return 'Unknown'
     s = str(text)
+    # Parse generic frequencies out of slogan strings
     s = re.sub(r'(?<!\d)(8[7-9]|9\d|10[0-7])(\.\d)?(?!\d)', '{FREQ}', s)
+    # Normalize common letter/number prefixes
     s = re.sub(r'\b[Kk][- ]?\{FREQ\}', 'K-{FREQ}', s)
     s = re.sub(r'\b[Yy][- ]?\{FREQ\}', 'Y-{FREQ}', s)
     s = re.sub(r'\b[Qq][- ]?\{FREQ\}', 'Q-{FREQ}', s)
@@ -276,6 +302,7 @@ def load_data():
         df['Station_Discovery_Year'] = df.groupby('Station')[y_col].transform('min')
         df['Freq_Num'] = pd.to_numeric(df['Frequency'], errors='coerce')
         
+        # Build strict RDS Status indicator
         df['RDS_Status'] = df[rds_c_field].apply(lambda x: 'No' if pd.isna(x) or str(x).strip().lower() in ['', 'nan', 'none', 'no', '0', 'false'] else 'Yes')
 
         return df, df['Date_Obj'].max(), dist_col, dd_col, 'DX_Lat', 'DX_Lon', 'ST_Lat', 'ST_Lon', l_dx, l_st, h_col, y_col, dom_col, m_name_col, dx_st_col, rds_c_field
@@ -288,8 +315,8 @@ df, last_date, d_col, dd_col, dx_lat_f, dx_lon_f, st_lat_f, st_lon_f, dx_loc_col
 if df.empty: 
     st.stop()
 
-# 2b. DATA LOADING (WTFDA BIGQUERY ENGINE)
-@st.cache_data(ttl=43200) # Syncs directly with BigQuery every 12 hours
+# 2b. DATA LOADING (WTFDA SHEET ENGINE)
+@st.cache_data(ttl=43200) # Syncs directly with Google Sheets every 12 hours
 def load_wtfda_data():
     try:
         creds_dict = dict(st.secrets["gcp_service_account"])
@@ -337,8 +364,8 @@ def load_wtfda_data():
         st.error(f"WTFDA Load Error: {e}")
         return pd.DataFrame()
 
-# 3. SIDEBAR NAVIGATION ENGINE
-pages = ["WELCOME", "DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ"]
+# 3. SIDEBAR NAVIGATION
+pages = ["WELCOME", "DASHBOARD OVERVIEW", "ES-CLOUD TRACKER", "GEOGRAPHIC ANALYSIS", "TEMPORAL TRENDS", "FREQUENCY & MUF", "DXER INTELLIGENCE", "STATION & RDS IQ", "RELEASE NOTES"]
 
 if st.session_state.jump_to_rds:
     st.session_state.nav_idx = pages.index("STATION & RDS IQ")
@@ -351,7 +378,7 @@ with st.sidebar:
     selected_page = option_menu(
         "DATA MODULES", 
         pages, 
-        icons=["broadcast", "house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin"], 
+        icons=["broadcast", "house-fill", "cloud-haze2", "geo-alt", "clock-history", "graph-up-arrow", "person-badge", "broadcast-pin", "journal-text"], 
         default_index=st.session_state.nav_idx,
         key=f"nav_menu_{st.session_state.reset_count}_{st.session_state.nav_idx}"
     )
@@ -375,7 +402,7 @@ f_dist = "All"
 f_reg = "All"
 f_rds = "All"
 
-if not st.session_state.full_screen and selected_page != "WELCOME":
+if not st.session_state.full_screen and selected_page != "WELCOME" and selected_page != "RELEASE NOTES":
     rk = f"v{st.session_state.reset_count}" 
     st.markdown("<h4 style='color: #D32F2F; margin-bottom: 0px;'>GLOBAL FILTERS</h4>", unsafe_allow_html=True)
     st.markdown("<hr style='margin-top: 5px; margin-bottom: 15px; border-color: #333;'>", unsafe_allow_html=True)
@@ -458,6 +485,30 @@ if selected_page == "WELCOME":
         We hope it helps provide insight for you not only into the historical performance of Sporadic Es seasons, but show you what is possible from your location, or in any given season. We can't predict Sporadic Es (yet!) but maybe we can at least shine some light on how a typical season behaves and unfolds.
         </div>
         """, unsafe_allow_html=True)
+
+        st.markdown("---")
+        
+        # --- DATA SOURCES & ATTRIBUTION SECTION ---
+        st.markdown("""
+        <h3 style="color: #D32F2F; margin-bottom: 10px;">📚 DATA SOURCES & ATTRIBUTION</h3>
+        <div class="welcome-text" style="font-size: 1.05rem;">
+        <b>DX Central makes absolutely no claim of ownership over the raw data presented in this dashboard.</b> SEDAP is simply an analytical engine designed to visualize and cross-reference publicly available data provided by the incredible resources below.<br><br>
+        
+        <b>The Raw Data:</b>
+        <ul>
+            <li><b>FM Broadcast Logs:</b> Sourced with permission from <b>FMList.org</b>, the world's most comprehensive database of FM and TV broadcast DX loggings.</li>
+            <li><b>Station & Transmitter Intelligence:</b> Sourced from the <b>Worldwide TV-FM DX Association (WTFDA)</b> database (db.wtfda.org).</li>
+        </ul>
+        
+        <b>The Architecture & Tools:</b>
+        <ul>
+            <li><b>Data Warehousing:</b> Google Cloud BigQuery</li>
+            <li><b>Application Framework:</b> Python & Streamlit</li>
+            <li><b>Geospatial Rendering:</b> Plotly & PyDeck</li>
+            <li><b>Development Partner:</b> Application architecture and data normalization engineered in partnership with Google Gemini Advanced.</li>
+        </ul>
+        </div>
+        """, unsafe_allow_html=True)
         
     with col_info:
         st.info("""
@@ -469,10 +520,27 @@ if selected_page == "WELCOME":
         """)
         
         st.markdown("<br>", unsafe_allow_html=True)
+        
+        # --- USAGE POLICY & TERMS SECTION ---
+        st.markdown("""
+        <div style="background-color: #0A0A0A; padding: 20px; border-radius: 10px; border: 1px solid #333; border-left: 4px solid #FFA500;">
+        <h4 style="color: #FFA500; margin-top: 0;">⚖️ USAGE POLICY & TERMS</h4>
+        <div style="color: #DDD; font-size: 0.95rem; font-weight: 300; line-height: 1.5;">
+        SEDAP is provided by DX Central absolutely free of charge for the personal, hobbyist, and academic use of the radio DX community.<br><br>
+        
+        <b>Sharing & Citation:</b> You are highly encouraged to share, quote, and discuss the findings, charts, and intelligence gathered from this dashboard! We simply ask that you provide proper attribution to <b>"SEDAP by DX Central (fmdxdata.com)"</b> when sharing screenshots or data externally.<br><br>
+        
+        <b>Data Protection:</b> To protect the integrity of the database and respect the bandwidth of our data partners, automated scraping, mass-downloading, or commercial monetization of SEDAP data is strictly prohibited. Any mass-use of this dataset requires prior written authorization from Loyd Van Horn / DX Central.
+        </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
         st.markdown("""
         <div style="background-color: #111; padding: 20px; border-radius: 10px; border-left: 4px solid #D32F2F;">
         <h4 style="color: #D32F2F; margin-top: 0;">SPECIAL THANKS TO...</h4>
-        <ul style="color: #DDD; font-weight: 300;">
+        <ul style="color: #DDD; font-weight: 300; font-size: 0.95rem;">
             <li><b>Gunter Lorenz</b> at FMList.org for making their logging data available for analysis.</li>
             <li><b>The WTFDA</b> and their detailed station database that gives us actionable intelligence on stations.</li>
             <li><b>Mike Jeziorski</b> for his partnership in obtaining the data needed for this analysis.</li>
@@ -569,7 +637,6 @@ elif selected_page == "ES-CLOUD TRACKER":
             else:
                 render_df = map_df[(map_df['Time_Str'] <= cur_time) & (map_df['Time_Str'] >= lookback_time_str)]
         
-        # User requested exception: keep this Red = Low, White = High
         layers = [pdk.Layer(
             'HeatmapLayer' if vm == "Es Cloud Location Heatmap" else 'LineLayer', 
             data=render_df[['Final_Mid_Lat', 'Final_Mid_Lon']].dropna() if vm == "Es Cloud Location Heatmap" else render_df[[dx_lat_f, dx_lon_f, st_lat_f, st_lon_f]].dropna(), 
@@ -2133,3 +2200,40 @@ elif selected_page == "STATION & RDS IQ":
                         st.dataframe(unheard_df[['Target']], height=300, hide_index=True, use_container_width=True)
                     else:
                         st.success(f"100% Penetration! Every station in this {c_type.lower()} has been logged.")
+
+# 13. MODULE 8: RELEASE NOTES & CHANGELOG (NEW)
+elif selected_page == "RELEASE NOTES":
+    st.markdown(f"<h1 style='text-align: center; color: {th_red};'>PROJECT EVOLUTION & CHANGELOG</h1>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    st.markdown("""
+    ### 🚀 VERSION 2.0.0 (Launch Version)
+    **Release Date:** May 1, 2026
+    **Designation:** "The Multi-Source Architecture Lockdown"
+    
+    **New Core Capabilities:**
+    * **Google Cloud Migration:** SEDAP is now fully powered by Google Cloud BigQuery, allowing for real-time analysis of over 85,000 global FM broadcast logs.
+    * **The Es-Cloud Tracker:** A completely new cinematic, multi-day playback engine mapping geographic ionospheric clouds over North America.
+    * **Geospatial Flyouts:** Interactive US, Canadian, and International maps with dynamic 11-point intelligence reports for every region.
+    * **The SDR Tuner:** A built-in frequency tuner allowing deep-dive interrogation of signal paths, global band yields, and Maximum Usable Frequency (MUF) trends on a per-MHz basis.
+    * **DXer Network Analytics:** Implemented the definitive Season Quality Index (SQI) algorithm to eliminate observer bias, tracking logs-per-DXer and annual network growth.
+    * **WTFDA Demographics:** Fully integrated the Worldwide TV-FM DX Association (WTFDA) station database to measure RDS PI-Code adoption, Format/Slogan correlation mapping, and network penetration gamification for unheard stations.
+    
+    **Architectural Improvements:**
+    * **The De-coupled Engine:** Re-engineered spatial joins to match DXers and Transmitters independently, maximizing path visibility for new un-paired coordinates.
+    * **Geometric Recovery Shield:** Built-in vector math fallback to automatically reconstruct "invisible" signal paths when specific endpoints are missing.
+    * **Stealth UI Framework:** Upgraded front-end with an SDR-inspired aesthetic, utilizing Oswald/Share Tech Mono typography, high-contrast heat mapping, and an anti-fatigue dark mode palette.
+    * **Persistent Watermarking:** Implemented OS-level screenshot branding for secure data sharing across the DX community.
+    """)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    st.markdown("""
+    ### 📦 VERSION 1.0.0 (Legacy Phase)
+    **Release Date:** 2024
+    **Designation:** "The Google Site Era"
+    
+    * Initial proof-of-concept deployment.
+    * Basic static data visualizations hosted natively via Google Sites and Looker Studio.
+    * Limited sample sizes restricted by Looker Studio data row caps. 
+    """)
